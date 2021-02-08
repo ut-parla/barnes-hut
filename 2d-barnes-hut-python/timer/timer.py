@@ -36,7 +36,7 @@ class TimerClass:
         self.times[name].append(elapsed)
 
     def print(self):
-        print("Time report\n")
+        #print("Time report\n")
         print("*"*50)
         print("name, avg, stddev")
         for name, times in self.times.items():
