@@ -4,7 +4,7 @@ parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 
 
-from barneshut.simplebarneshut import SimpleBarnesHut
+from barneshut.implementations import SimpleBarnesHut
 
 bh = SimpleBarnesHut()
 bh.read_particles_from_file(sys.argv[1])
