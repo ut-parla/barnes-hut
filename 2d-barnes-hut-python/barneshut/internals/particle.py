@@ -4,7 +4,6 @@ from .vector import Vector
 from . import constants as cn
 import math
 
-
 class Particle:
     particle_id_counter = 0
 

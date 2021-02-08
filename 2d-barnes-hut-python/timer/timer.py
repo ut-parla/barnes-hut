@@ -35,7 +35,7 @@ class TimerClass:
             self.times[name] = []
         self.times[name].append(elapsed)
 
-    def __del__(self):
+    def print(self):
         print("Time report\n")
         print("*"*50)
         print("name, avg, stddev")
@@ -44,5 +44,9 @@ class TimerClass:
             stddev = statistics.pstdev(times)
             print(f"{name}, {avg}, {stddev}")
         print("*"*50)
+
+    def reset_and_print(self):
+        self.print()
+        self.times = {}
 
 Timer = TimerClass()
