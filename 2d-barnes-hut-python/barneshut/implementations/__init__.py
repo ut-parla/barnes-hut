@@ -1,1 +1,1 @@
-from .simple import SimpleBarnesHut
+from .barneshut.simple import SimpleBarnesHut
