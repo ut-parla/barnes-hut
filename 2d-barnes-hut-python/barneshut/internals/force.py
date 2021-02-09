@@ -6,8 +6,8 @@ class Force:
         self.xForce = 0
         self.yForce = 0
 
-    def add(self, other):
-        return Force(self.xForce + other.xForce, self.yForce + other.yForce)
+    #def add(self, other):
+    #    return Force(self.xForce + other.xForce, self.yForce + other.yForce)
 
     @staticmethod
     def applyForceBy(p1, p2):
@@ -18,10 +18,12 @@ class Force:
         yDiff = p1.pos.y - p2.pos.y #.disty(p2.pos)
         dist = p1.pos.dist(p2.pos)
 
-        f = constants.TICK_SECONDS * (constants.GRAVITATIONAL_CONSTANT * p1.mass * p2.mass) / dist*dist
+        #f = constants.TICK_SECONDS * (constants.GRAVITATIONAL_CONSTANT * p1.mass * p2.mass) / dist*dist
+        f = (constants.GRAVITATIONAL_CONSTANT * p1.mass * p2.mass) / (dist*dist*dist)
 
         p1.accel.x -= f * xDiff / p1.mass
         p1.accel.y -= f * yDiff / p1.mass
+
         p2.accel.x += f * xDiff / p2.mass
         p2.accel.y += f * yDiff / p2.mass
 
@@ -34,7 +36,8 @@ class Force:
         yDiff = p1.pos.y - com.pos.y #.disty(p2.pos)
         dist = p1.pos.dist(com.pos)
 
-        f = constants.TICK_SECONDS * (constants.GRAVITATIONAL_CONSTANT * p1.mass * com.mass) / dist*dist
+        #f = constants.TICK_SECONDS * (constants.GRAVITATIONAL_CONSTANT * p1.mass * com.mass) / dist*dist
+        f = (constants.GRAVITATIONAL_CONSTANT * p1.mass * com.mass) / (dist*dist*dist)
 
         p1.accel.x -= f * xDiff / p1.mass
         p1.accel.y -= f * yDiff / p1.mass

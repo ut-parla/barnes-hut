@@ -51,11 +51,11 @@ def generateParticles(max_coord, num_particles):
         # x = (self.width - 150) + random.random()*100
         # y = (self.height - 150) + random.random()*100
 
-        x = random.gauss(w/2, w/7)
-        y = random.gauss(h/2, h/7)
+        x = random.gauss(w/2, w/12)
+        y = random.gauss(h/2, h/12)
 
-        xVel = (random.random()-0.5) * 10
-        yVel = (random.random()-0.5) * 10
+        xVel = (random.random()-0.5) * 5
+        yVel = (random.random()-0.5) * 5
         #angle = random.gauss(math.pi*2, math.pi/2)
         # xVel = sun.pos.dist(pos) * math.sin(angle)
         # yVel = sun.pos.dist(pos) * math.cos(angle)
