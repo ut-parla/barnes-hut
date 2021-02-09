@@ -1,14 +1,14 @@
 from barneshut.implementations.quadtree import ProcessPoolNode
 from .base import BaseBarnesHut
 from timer import Timer
-from concurrent.futures import ProcessPoolExecutor
-
+from concurrent.futures import ProcessPoolExecutor as MPool
+#from concurrent.futures import ThreadPoolExecutor as MPool
 
 class ProcessPoolBarnesHut (BaseBarnesHut):
 
-    def __init__(self, n_workers):
+    def __init__(self, n_workers=4):
         super().__init__()
-        self.executor = ProcessPoolExecutor(max_workers=n_workers)
+        self.n_workers = n_workers
 
     def create_tree(self):
         with Timer.get_handle("create_tree"):
@@ -20,16 +20,21 @@ class ProcessPoolBarnesHut (BaseBarnesHut):
                 self.root_node.add_particle(particle)
 
     def run(self, n_iterations):
-        # time whole run
-        with Timer.get_handle("whole_run"):
-            for i in range(n_iterations):
-                # time each iteration
-                with Timer.get_handle("iteration"):
-                    # calc changes due to gravity
-                    for particle in self.particles:
-                        self.root_node.applyGravityTo(particle)
+        with MPool(max_workers=self.n_workers) as executor:
+            self.executor = executor
+            # time whole run
+            with Timer.get_handle("whole_run"):
+                for _ in range(n_iterations):
+                    # (re)create the tree for the next step
+                    self.create_tree()
 
-                # recreate the tree for the next step
-                self.create_tree()
+                    # time each iteration
+                    with Timer.get_handle("iteration"):
+                        # calc changes due to gravity
+                        self.root_node.recurse_to_nodes(self.particles)
+
+            #self.executor = None
 
         Timer.reset_and_print()
+        self.print_particles()
+        #self.executor.shutdown(True, cancel_futures=True)

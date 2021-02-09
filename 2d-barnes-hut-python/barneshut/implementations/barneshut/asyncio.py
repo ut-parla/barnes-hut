@@ -18,6 +18,9 @@ class AsyncBarnesHut (BaseBarnesHut):
         # time whole run
         with Timer.get_handle("whole_run"):
             for _ in range(n_iterations):
+                # (re)create the tree for the next step
+                self.create_tree()
+
                 # time each iteration
                 with Timer.get_handle("iteration"):
                     # calc changes due to gravity
@@ -25,9 +28,6 @@ class AsyncBarnesHut (BaseBarnesHut):
                     # Wait for them all
                     await asyncio.gather(*tasks)
                         
-                # recreate the tree for the next step
-                self.create_tree()
-
         Timer.reset_and_print()
 
     def run(self, n_iterations):

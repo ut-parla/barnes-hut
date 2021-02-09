@@ -10,15 +10,20 @@ class ProcessPoolNode (BaseNode):
         super().__init__(size, x, y)
         self.executor = executor
 
-    # this could be transformed into a executor map, but i dont think its worth it
-    # def create_tree(self):
-    #     with Timer.get_handle("create_tree"):
-    #         self.root_node = BaseNode(self.size, 0, 0)
-    #         for particle in self.particles:
-    #             # while we're doing this, update particle positions
-    #             # based on forces received
-    #             particle.tick()
-    #             self.root_node.add_particle(particle)
+    def recurse_to_nodes(self, particles):
+        self.executor.map(self.applyGravityTo, particles)
+        #map(self.applyGravityTo, particles)
+    
+    def populate_nodes(self):
+        subW = self.width / 2
+        subH = self.height / 2
+        subSize = (subW, subH)
+        x = self.x
+        y = self.y
+        self.childNodes["nw"] = ProcessPoolNode(subSize, x, y, self.executor)
+        self.childNodes["ne"] = ProcessPoolNode(subSize, x + subW, y, self.executor)
+        self.childNodes["se"] = ProcessPoolNode(subSize, x + subW, y + subH, self.executor)
+        self.childNodes["sw"] = ProcessPoolNode(subSize, x, y + subH, self.executor)
 
     #whoever is calling this is passing root as self
     def applyGravityTo(self, particle):
@@ -34,11 +39,14 @@ class ProcessPoolNode (BaseNode):
         #if self is internal, aka has children, recurse
         else:
             # Recurse through child nodes to get more precise total force
-            futures = []
-            for child in self.childNodes.values():
-                fut = self.executor.submit(child.applyGravityTo, particle)
-                futures.append(fut)
+            # futures = []
+            # for child in self.childNodes.values():
+            #     fut = self.executor.submit(child.applyGravityTo, particle)
+            #     futures.append(fut)
+            # #wait for all
+            # for fut in futures:
+            #     fut.result()
 
-            #wait for all
-            for fut in futures:
-                fut.result()
+            for child in self.childNodes.values():
+                child.applyGravityTo(particle)
+                

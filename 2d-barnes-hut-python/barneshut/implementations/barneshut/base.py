@@ -15,11 +15,13 @@ class BaseBarnesHut:
             for _ in range(self.n_particles):
                 p = Particle.from_line(fp.readline())
                 self.particles.append(p)
-            # now that we have the particles, build tree
-            self.create_tree()
 
     def create_tree(self):
         raise NotImplementedError()
 
     def run(self, n_iterations):
         raise NotImplementedError()
+
+    def print_particles(self):
+        for p in self.particles:
+            print(repr(p))
