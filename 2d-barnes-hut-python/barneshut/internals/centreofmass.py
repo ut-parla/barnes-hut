@@ -10,7 +10,7 @@ spec = [
     ('mass', i4)
 ]
 
-@jitclass(spec)
+#@jitclass(spec)
 class CentreOfMass:
 
     def __init__(self, pX, pY, mass):

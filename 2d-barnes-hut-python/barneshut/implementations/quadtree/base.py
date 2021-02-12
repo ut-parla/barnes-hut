@@ -16,26 +16,27 @@ class BaseNode:
         self.theta = constants.THETA
 
     def add_particle(self, newParticle):
+        # empty node means we have no particles
         if (self.isEmptyNode()):
             self.particle = newParticle
             self.centreOfMass = newParticle.getCentreOfMass()
-            if self.centreOfMass is None:
-                print("NO WAY ITS NONE")
-            return
+        else:
+            if (self.childNodes['ne'] is None):
+                self.populate_nodes()
 
-        if (self.childNodes['ne'] is None):
-            self.populate_nodes()
+            if (self.particle is not None):
+                # clear centre of mass, as we're going to update it
+                # based on child nodes
+                self.centreOfMass = None
+                #self.centreOfMass = CentreOfMass(0, 0, 0)
 
-        if (self.particle is not None):
-            # clear centre of mass, as we're going to update it
-            # based on child nodes
-            self.centreOfMass = None
-            #self.centreOfMass = CentreOfMass(0, Point(0,0))
+            #gotta understand this
+            self.add_particleToChildNodes(self.particle)
+            self.add_particleToChildNodes(newParticle)
+            self.particle = None
 
-        #gotta understand this
-        self.add_particleToChildNodes(self.particle)
-        self.add_particleToChildNodes(newParticle)
-        self.particle = None
+    def create_new_node(self, *args):
+        return BaseNode(*args)
 
     def populate_nodes(self):
         subW = self.width / 2
@@ -43,10 +44,10 @@ class BaseNode:
         subSize = (subW, subH)
         x = self.x
         y = self.y
-        self.childNodes["nw"] = BaseNode(subSize, x, y)
-        self.childNodes["ne"] = BaseNode(subSize, x + subW, y)
-        self.childNodes["se"] = BaseNode(subSize, x + subW, y + subH)
-        self.childNodes["sw"] = BaseNode(subSize, x, y + subH)
+        self.childNodes["nw"] = self.create_new_node(subSize, x, y)
+        self.childNodes["ne"] = self.create_new_node(subSize, x + subW, y)
+        self.childNodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
+        self.childNodes["sw"] = self.create_new_node(subSize, x, y + subH)
 
     def add_particleToChildNodes(self, particle):
         if (particle is None):

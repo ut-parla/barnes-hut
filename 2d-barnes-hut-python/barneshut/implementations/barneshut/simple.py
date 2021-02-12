@@ -9,12 +9,11 @@ class SimpleBarnesHut (BaseBarnesHut):
         with Timer.get_handle("create_tree"):
             self.root_node = BaseNode(self.size, 0, 0)
             for particle in self.particles:
-                # while we're doing this, update particle positions
-                # based on forces received
+                # TODO: parallelize ticks, this will be FAST
                 particle.tick()
                 self.root_node.add_particle(particle)
 
-    def run(self, n_iterations, partitions=None):
+    def run(self, n_iterations, partitions=None, print_particles=False):
         # time whole run
         with Timer.get_handle("whole_run"):
             for _ in range(n_iterations):
@@ -24,13 +23,8 @@ class SimpleBarnesHut (BaseBarnesHut):
                 # time each iteration
                 with Timer.get_handle("iteration"):
                     # calc changes due to gravity
-                    if partitions is None:
-                        for particle in self.particles:
-                            self.root_node.applyGravityTo(particle)
-                    else:
-                        chunks = np.array_split(self.particles, partitions)
-                        for p in chunks:
-                            self.root_node.chunkedApplyGravityTo(p)
+                    map(self.root_node.applyGravityTo, self.particles)
 
         Timer.reset_and_print()
-        #self.print_particles()
+        if print_particles:
+            self.print_particles()

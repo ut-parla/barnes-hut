@@ -1,1 +1,0 @@
-Compile cython code with: cythonize -a -i force.pyx

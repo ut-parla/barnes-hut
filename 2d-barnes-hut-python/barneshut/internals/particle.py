@@ -17,7 +17,7 @@ def particle_from_line(line):
     fields = [float(x) for x in line.split(",")]
     return Particle(*fields)
 
-@jitclass(spec)
+#@jitclass(spec)
 class Particle:
 
     def __init__(self, pX, pY, vX, vY, mass):
@@ -25,7 +25,7 @@ class Particle:
         self.pY = pY
         self.vX = vX
         self.vY = vY
-        self.mass = int(mass)
+        self.mass = mass
         self.aX = 0
         self.aY = 0
 
