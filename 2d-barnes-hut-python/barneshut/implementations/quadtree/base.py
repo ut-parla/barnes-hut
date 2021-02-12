@@ -1,7 +1,7 @@
 from barneshut.internals import constants
 from barneshut.internals.centreofmass import CentreOfMass
 from barneshut.internals.force import Force
-
+from collections.abc import Iterable
 
 class BaseNode:
 
@@ -67,6 +67,16 @@ class BaseNode:
                 and pos.y >= self.y
                 and pos.x < self.x + self.width
                 and pos.y < self.y + self.height)
+
+    def chunkedApplyGravityTo(self, arg):
+        # if it's not a list, create one
+        if not isinstance(arg, Iterable):
+            particles = [arg,]
+        else:
+            particles = arg
+
+        for p in particles:
+            self.applyGravityTo(p)
 
     #whoever is calling this is passing root as self
     def applyGravityTo(self, particle):

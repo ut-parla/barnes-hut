@@ -1,7 +1,7 @@
 from barneshut.implementations.quadtree.base import BaseNode
 from .base import BaseBarnesHut
 from timer import Timer
-
+import numpy as np
 
 class SimpleBarnesHut (BaseBarnesHut):
 
@@ -14,7 +14,7 @@ class SimpleBarnesHut (BaseBarnesHut):
                 particle.tick()
                 self.root_node.add_particle(particle)
 
-    def run(self, n_iterations):
+    def run(self, n_iterations, partitions=None):
         # time whole run
         with Timer.get_handle("whole_run"):
             for _ in range(n_iterations):
@@ -24,8 +24,13 @@ class SimpleBarnesHut (BaseBarnesHut):
                 # time each iteration
                 with Timer.get_handle("iteration"):
                     # calc changes due to gravity
-                    for particle in self.particles:
-                        self.root_node.applyGravityTo(particle)
+                    if partitions is None:
+                        for particle in self.particles:
+                            self.root_node.applyGravityTo(particle)
+                    else:
+                        chunks = np.array_split(self.particles, partitions)
+                        for p in chunks:
+                            self.root_node.chunkedApplyGravityTo(p)
 
         Timer.reset_and_print()
-        self.print_particles()
+        #self.print_particles()

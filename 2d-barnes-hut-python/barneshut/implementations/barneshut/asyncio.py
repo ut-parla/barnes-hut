@@ -1,9 +1,21 @@
-from barneshut.implementations.quadtree import AsyncNode
+from barneshut.implementations.quadtree import AsyncNode, BaseNode
 from .base import BaseBarnesHut
 from timer import Timer
 import asyncio
+import numpy as np
 
 class AsyncBarnesHut (BaseBarnesHut):
+
+    def populate_nodes(self):
+        subW = self.width / 2
+        subH = self.height / 2
+        subSize = (subW, subH)
+        x = self.x
+        y = self.y
+        self.childNodes["nw"] = AsyncBarnesHut(subSize, x, y)
+        self.childNodes["ne"] = AsyncBarnesHut(subSize, x + subW, y)
+        self.childNodes["se"] = AsyncBarnesHut(subSize, x + subW, y + subH)
+        self.childNodes["sw"] = AsyncBarnesHut(subSize, x, y + subH)
 
     def create_tree(self):
         with Timer.get_handle("create_tree"):
@@ -14,7 +26,8 @@ class AsyncBarnesHut (BaseBarnesHut):
                 particle.tick()
                 self.root_node.add_particle(particle)
 
-    async def __run(self, n_iterations):
+    async def __run(self, n_iterations, partitions):
+        print(f"Using {partitions} partitions")
         # time whole run
         with Timer.get_handle("whole_run"):
             for _ in range(n_iterations):
@@ -23,12 +36,15 @@ class AsyncBarnesHut (BaseBarnesHut):
 
                 # time each iteration
                 with Timer.get_handle("iteration"):
-                    # calc changes due to gravity
-                    tasks = [self.root_node.applyGravityTo(p) for p in self.particles]
-                    # Wait for them all
-                    await asyncio.gather(*tasks)
-                        
+                    if partitions is None:
+                        tasks = [self.root_node.applyGravityTo(p) for p in self.particles]
+                    else:
+                        chunks = np.array_split(self.particles, partitions)
+                        tasks = [self.root_node.chunkedApplyGravityTo(ps) for ps in chunks]
+                        # Wait for them all
+                        await asyncio.gather(*tasks)
+
         Timer.reset_and_print()
 
-    def run(self, n_iterations):
-        asyncio.get_event_loop().run_until_complete(self.__run(n_iterations))
+    def run(self, n_iterations, partitions=None):
+        asyncio.get_event_loop().run_until_complete(self.__run(n_iterations, partitions))

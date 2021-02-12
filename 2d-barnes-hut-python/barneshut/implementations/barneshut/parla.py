@@ -4,6 +4,7 @@ from timer import Timer
 from parla import Parla
 from parla.cpu import *
 from parla.tasks import *
+import numpy as np
 
 class ParlaBarnesHut (BaseBarnesHut):
 
@@ -14,11 +15,10 @@ class ParlaBarnesHut (BaseBarnesHut):
                 particle.tick()
                 self.root_node.add_particle(particle)
 
-    def __run(self, n_iterations):
+    def __run(self, n_iterations, partitions):
         @spawn()
         async def main():
-            # time whole run
-            
+            # time whole run            
             with Timer.get_handle("whole_run"):
                 for _ in range(n_iterations):
                     B = TaskSpace("B")
@@ -26,20 +26,17 @@ class ParlaBarnesHut (BaseBarnesHut):
                     self.create_tree()
                     # time each iteration
                     with Timer.get_handle("iteration"):
-                        for i, p in enumerate(self.particles):
+                        chunks = np.array_split(self.particles, partitions)
+                        for i, p in enumerate(chunks):
                             @spawn(B[i])
                             def particle_force():
-                                self.root_node.applyGravityTo(p)
+                                self.root_node.chunkedApplyGravityTo(p)
                         # Wait for them all
                         await B
-                        #@spawn(dependencies=B)
-                        #def wait():
-                        #    pass
-                        #await wait
 
             Timer.reset_and_print()
-            self.print_particles()
+            #self.print_particles()
             
-    def run(self, n_iterations):
+    def run(self, n_iterations, partitions=10):
         with Parla():
-            self.__run(n_iterations)
+            self.__run(n_iterations, partitions)

@@ -1,4 +1,5 @@
 from . import constants
+from numba import jit
 
 class Force:
 
@@ -10,6 +11,7 @@ class Force:
     #    return Force(self.xForce + other.xForce, self.yForce + other.yForce)
 
     @staticmethod
+    #@jit(fastmath=True, nogil=True, nopython=True)
     def applyForceBy(p1, p2):
         # G = 6.673 x 10-11 Nm^2/kg^2
         # Fgrav = (G*m1*m2)/d^2
@@ -28,6 +30,7 @@ class Force:
         p2.accel.y += f * yDiff / p2.mass
 
     @staticmethod
+    #@jit(fastmath=True, nogil=True, nopython=True)
     def applyForceByCOM(p1, com):
         # G = 6.673 x 10-11 Nm^2/kg^2
         # Fgrav = (G*m1*m2)/d^2

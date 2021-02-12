@@ -5,23 +5,31 @@ parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 
 
-from barneshut.implementations import SimpleBarnesHut, ProcessPoolBarnesHut, AsyncBarnesHut, ParlaBarnesHut
+from barneshut.implementations import SimpleBarnesHut, ProcessPoolBarnesHut, AsyncBarnesHut
+from barneshut.implementations import ParlaBarnesHut
 
 fname = sys.argv[1]
 n = int(sys.argv[2])
 
-bh = SimpleBarnesHut()
-bh.read_particles_from_file(fname)
-bh.run(n)
+
+for pt in [1]:
+    bh = SimpleBarnesHut()
+    bh.read_particles_from_file(fname)
+    print(f"Sequential, {pt} chunk")
+    bh.run(n)
 
 # bh2 = ProcessPoolBarnesHut(5)
 # bh2.read_particles_from_file(fname)
 # bh2.run(n)
 
-#bh3 = AsyncBarnesHut()
-#bh3.read_particles_from_file(fname)
-#bh3.run(n)
+for pt in [1, 10, 100]:
+    bh3 = AsyncBarnesHut()
+    bh3.read_particles_from_file(fname)
+    print(f"Async, {pt} chunk")
+    bh3.run(n, pt)
 
-bh4 = ParlaBarnesHut()
-bh4.read_particles_from_file(fname)
-bh4.run(n)
+for pt in [1, 10, 100]:
+    bh4 = ParlaBarnesHut()
+    bh4.read_particles_from_file(fname)
+    print(f"Parla, {pt} chunk")
+    bh4.run(n, pt)
