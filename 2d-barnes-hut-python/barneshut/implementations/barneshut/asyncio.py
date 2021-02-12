@@ -12,10 +12,10 @@ class AsyncBarnesHut (BaseBarnesHut):
         subSize = (subW, subH)
         x = self.x
         y = self.y
-        self.childNodes["nw"] = AsyncBarnesHut(subSize, x, y)
-        self.childNodes["ne"] = AsyncBarnesHut(subSize, x + subW, y)
-        self.childNodes["se"] = AsyncBarnesHut(subSize, x + subW, y + subH)
-        self.childNodes["sw"] = AsyncBarnesHut(subSize, x, y + subH)
+        self.child_nodes["nw"] = AsyncBarnesHut(subSize, x, y)
+        self.child_nodes["ne"] = AsyncBarnesHut(subSize, x + subW, y)
+        self.child_nodes["se"] = AsyncBarnesHut(subSize, x + subW, y + subH)
+        self.child_nodes["sw"] = AsyncBarnesHut(subSize, x, y + subH)
 
     def create_tree(self):
         with Timer.get_handle("create_tree"):

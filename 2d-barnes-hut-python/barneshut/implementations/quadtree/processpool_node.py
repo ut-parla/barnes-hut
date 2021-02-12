@@ -19,10 +19,10 @@ class ProcessPoolNode (BaseNode):
         subSize = (subW, subH)
         x = self.x
         y = self.y
-        self.childNodes["nw"] = ProcessPoolNode(subSize, x, y, self.executor)
-        self.childNodes["ne"] = ProcessPoolNode(subSize, x + subW, y, self.executor)
-        self.childNodes["se"] = ProcessPoolNode(subSize, x + subW, y + subH, self.executor)
-        self.childNodes["sw"] = ProcessPoolNode(subSize, x, y + subH, self.executor)
+        self.child_nodes["nw"] = ProcessPoolNode(subSize, x, y, self.executor)
+        self.child_nodes["ne"] = ProcessPoolNode(subSize, x + subW, y, self.executor)
+        self.child_nodes["se"] = ProcessPoolNode(subSize, x + subW, y + subH, self.executor)
+        self.child_nodes["sw"] = ProcessPoolNode(subSize, x, y + subH, self.executor)
 
     #whoever is calling this is passing root as self
     def applyGravityTo(self, particle):
@@ -34,18 +34,18 @@ class ProcessPoolNode (BaseNode):
             Force.applyForceBy(particle, self.particle)
         #if particle is far enough that we can approximate
         elif (self.isFarEnoughForApproxMass(particle)):
-            Force.applyForceByCOM(particle, self.centreOfMass)
+            Force.applyForceByCOM(particle, self.centre_of_mass)
         #if self is internal, aka has children, recurse
         else:
             # Recurse through child nodes to get more precise total force
             # futures = []
-            # for child in self.childNodes.values():
+            # for child in self.child_nodes.values():
             #     fut = self.executor.submit(child.applyGravityTo, particle)
             #     futures.append(fut)
             # #wait for all
             # for fut in futures:
             #     fut.result()
 
-            for child in self.childNodes.values():
+            for child in self.child_nodes.values():
                 child.applyGravityTo(particle)
                 

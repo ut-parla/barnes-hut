@@ -3,6 +3,7 @@ from barneshut.internals.centreofmass import CentreOfMass
 from collections.abc import Iterable
 import numpy as np
 
+
 class BaseNode:
 
     def __init__(self, size, x, y):
@@ -10,25 +11,27 @@ class BaseNode:
         self.height = size[1]
         self.x = x
         self.y = y
-        self.childNodes = {"ne": None, "se": None, "sw": None, "nw": None}
+        self.child_nodes = {"ne": None, "se": None, "sw": None, "nw": None}
+        # TODO: keep multiple particles
         self.particle = None
-        self.centreOfMass = None
+        # a COM is now a Particle, so we can reuse the class, since it's *mostly* the same thing
+        self.centre_of_mass = None
         self.theta = constants.THETA
 
     def add_particle(self, newParticle):
         # empty node means we have no particles
         if (self.isEmptyNode()):
             self.particle = newParticle
-            self.centreOfMass = newParticle.getCentreOfMass()
+            self.centre_of_mass = newParticle.getCentreOfMass()
         else:
-            if (self.childNodes['ne'] is None):
+            if (self.child_nodes['ne'] is None):
                 self.populate_nodes()
 
             if (self.particle is not None):
                 # clear centre of mass, as we're going to update it
                 # based on child nodes
-                self.centreOfMass = None
-                #self.centreOfMass = CentreOfMass(0, 0, 0)
+                self.centre_of_mass = None
+                #self.centre_of_mass = CentreOfMass(0, 0, 0)
 
             #gotta understand this
             self.add_particleToChildNodes(self.particle)
@@ -44,24 +47,24 @@ class BaseNode:
         subSize = (subW, subH)
         x = self.x
         y = self.y
-        self.childNodes["nw"] = self.create_new_node(subSize, x, y)
-        self.childNodes["ne"] = self.create_new_node(subSize, x + subW, y)
-        self.childNodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
-        self.childNodes["sw"] = self.create_new_node(subSize, x, y + subH)
+        self.child_nodes["nw"] = self.create_new_node(subSize, x, y)
+        self.child_nodes["ne"] = self.create_new_node(subSize, x + subW, y)
+        self.child_nodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
+        self.child_nodes["sw"] = self.create_new_node(subSize, x, y + subH)
 
     def add_particleToChildNodes(self, particle):
         if (particle is None):
             return
 
-        for node in self.childNodes.values():
+        for node in self.child_nodes.values():
             if (node.boundsAround(particle)):
                 node.add_particle(particle)
-                com = node.centreOfMass
-                #self.centreOfMass = com.combine(self.centreOfMass)
-                if self.centreOfMass is None:
-                    self.centreOfMass = com 
+                com = node.centre_of_mass
+                #self.centre_of_mass = com.combine(self.centre_of_mass)
+                if self.centre_of_mass is None:
+                    self.centre_of_mass = com 
                 else:
-                    self.centreOfMass.combine(com)
+                    self.centre_of_mass.combine(com)
                 return
 
         # Node has fallen out of bounds, so we just eat it
@@ -94,29 +97,29 @@ class BaseNode:
             particle.apply_force(self.particle)
         #if particle is far enough that we can approximate
         elif (self.isFarEnoughForApproxMass(particle)):
-            particle.apply_force_COM(self.centreOfMass)
+            particle.apply_force_COM(self.centre_of_mass)
         #if self is internal, aka has children, recurse
         else:
             # Recurse through child nodes to get more precise total force
-            for child in self.childNodes.values():
+            for child in self.child_nodes.values():
                 child.applyGravityTo(particle)
 
     def isFarEnoughForApproxMass(self, particle):
-        #self.centreOfMass.pos.dist(particle.pos)
-        d = particle.calculate_distance(self.centreOfMass.pX, self.centreOfMass.pY)
+        #self.centre_of_mass.pos.dist(particle.pos)
+        d = particle.calculate_distance(self.centre_of_mass.pX, self.centre_of_mass.pY)
         return np.divide(self.width, d) < self.theta
 
     #No particle in this node, but there are children
     def isInternalNode(self):
-        return self.particle is None and self.childNodes['ne'] is not None
+        return self.particle is None and self.child_nodes['ne'] is not None
 
     #No children, but there are particles
     def isExternalNode(self):
-        return self.childNodes['ne'] is None and self.particle is not None
+        return self.child_nodes['ne'] is None and self.particle is not None
 
     #No children, no particles
     def isEmptyNode(self):
-        return self.childNodes['ne'] is None and self.particle is None
+        return self.child_nodes['ne'] is None and self.particle is None
 
     def __repr__(self):
         return '<Node x: {}, y:{}, width:{}, height:{}, particle:{}, nodes:{}>'.format(self.x, self.y, self.width, self.height, self.particle, self.nodes)
