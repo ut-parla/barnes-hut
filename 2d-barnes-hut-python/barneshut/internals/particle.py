@@ -10,7 +10,10 @@ spec = [
 
 def particle_from_line(line):
     fields = [float(x) for x in line.split(",")]
-    return Particle(*fields)
+    return Particle(fields[0:2], fields[2], fields[3:5])
+
+def new_zero_particle():
+    return Particle((0,0), 0, (0,0))
 
 #@jitclass(spec)
 class Particle:
@@ -50,5 +53,10 @@ class Particle:
         self.position += self.velocity * cn.TICK_SECONDS/2
         self.acceleration = np.zeros(2)
     
+    def combine_COM(self, otherCOM):
+        added_mass = self.mass + otherCOM.mass
+        self.position = ((self.position * self.mass) + (otherCOM.position * otherCOM.mass)) / added_mass
+        self.mass = added_mass
+
     def __repr__(self):
         return '<Particle x: {}, y:{}>'.format(*self.position)

@@ -23,7 +23,7 @@ class SimpleBarnesHut (BaseBarnesHut):
                 # time each iteration
                 with Timer.get_handle("iteration"):
                     # calc changes due to gravity
-                    map(self.root_node.applyGravityTo, self.particles)
+                    map(self.root_node.apply_gravity, self.particles)
 
         Timer.reset_and_print()
         if print_particles:

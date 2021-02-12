@@ -30,7 +30,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                         for i, p in enumerate(chunks):
                             @spawn(B[i])
                             def particle_force():
-                                self.root_node.chunkedApplyGravityTo(p)
+                                self.root_node.apply_gravity_to_partition(p)
                         # Wait for them all
                         await B
 

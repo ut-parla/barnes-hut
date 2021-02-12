@@ -6,7 +6,7 @@ import numpy as np
 
 class AsyncBarnesHut (BaseBarnesHut):
 
-    def populate_nodes(self):
+    def create_children(self):
         subW = self.width / 2
         subH = self.height / 2
         subSize = (subW, subH)
@@ -37,10 +37,10 @@ class AsyncBarnesHut (BaseBarnesHut):
                 # time each iteration
                 with Timer.get_handle("iteration"):
                     if partitions is None:
-                        tasks = [self.root_node.applyGravityTo(p) for p in self.particles]
+                        tasks = [self.root_node.apply_gravity(p) for p in self.particles]
                     else:
                         chunks = np.array_split(self.particles, partitions)
-                        tasks = [self.root_node.chunkedApplyGravityTo(ps) for ps in chunks]
+                        tasks = [self.root_node.apply_gravity_to_partition(ps) for ps in chunks]
                         # Wait for them all
                         await asyncio.gather(*tasks)
 
