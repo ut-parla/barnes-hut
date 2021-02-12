@@ -22,14 +22,14 @@ for pt in [1]:
 # bh2.read_particles_from_file(fname)
 # bh2.run(n)
 
-for pt in [1, 10, 100]:
-    bh3 = AsyncBarnesHut()
-    bh3.read_particles_from_file(fname)
-    print(f"Async, {pt} chunk")
-    bh3.run(n, pt)
+# for pt in [1, 10, 100]:
+#     bh3 = AsyncBarnesHut()
+#     bh3.read_particles_from_file(fname)
+#     print(f"Async, {pt} chunk")
+#     bh3.run(n, pt)
 
-for pt in [1, 10, 100]:
-    bh4 = ParlaBarnesHut()
-    bh4.read_particles_from_file(fname)
-    print(f"Parla, {pt} chunk")
-    bh4.run(n, pt)
+# for pt in [1, 10, 100]:
+#     bh4 = ParlaBarnesHut()
+#     bh4.read_particles_from_file(fname)
+#     print(f"Parla, {pt} chunk")
+#     bh4.run(n, pt)

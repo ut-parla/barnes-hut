@@ -1,7 +1,7 @@
 from barneshut.internals import constants
 from barneshut.internals.centreofmass import CentreOfMass
-from barneshut.internals.force import Force
 from collections.abc import Iterable
+import numpy as np
 
 class BaseNode:
 
@@ -19,6 +19,8 @@ class BaseNode:
         if (self.isEmptyNode()):
             self.particle = newParticle
             self.centreOfMass = newParticle.getCentreOfMass()
+            if self.centreOfMass is None:
+                print("NO WAY ITS NONE")
             return
 
         if (self.childNodes['ne'] is None):
@@ -28,11 +30,11 @@ class BaseNode:
             # clear centre of mass, as we're going to update it
             # based on child nodes
             self.centreOfMass = None
+            #self.centreOfMass = CentreOfMass(0, Point(0,0))
 
+        #gotta understand this
         self.add_particleToChildNodes(self.particle)
         self.add_particleToChildNodes(newParticle)
-        #self.centreOfMass = centreOfMass.combine(centreOfMass2)
-        # self.centreOfMass = self.centreOfMass.combine(newParticle.getCentreOfMass())
         self.particle = None
 
     def populate_nodes(self):
@@ -49,24 +51,27 @@ class BaseNode:
     def add_particleToChildNodes(self, particle):
         if (particle is None):
             return
-        # self.totalMass += particle.mass
 
         for node in self.childNodes.values():
             if (node.boundsAround(particle)):
                 node.add_particle(particle)
                 com = node.centreOfMass
-                self.centreOfMass = com.combine(self.centreOfMass)
+                #self.centreOfMass = com.combine(self.centreOfMass)
+                if self.centreOfMass is None:
+                    self.centreOfMass = com 
+                else:
+                    self.centreOfMass.combine(com)
                 return
 
         # Node has fallen out of bounds, so we just eat it
         print ('Node moved out of bounds')
 
     def boundsAround(self, particle):
-        pos = particle.pos
-        return (pos.x >= self.x
-                and pos.y >= self.y
-                and pos.x < self.x + self.width
-                and pos.y < self.y + self.height)
+        x, y = particle.pX, particle.pY
+        return (x >= self.x
+                and y >= self.y
+                and x < self.x + self.width
+                and y < self.y + self.height)
 
     def chunkedApplyGravityTo(self, arg):
         # if it's not a list, create one
@@ -85,10 +90,10 @@ class BaseNode:
             return
         #if self is this is a leaf node with particle
         elif (self.isExternalNode()):
-            Force.applyForceBy(particle, self.particle)
+            particle.apply_force(self.particle)
         #if particle is far enough that we can approximate
         elif (self.isFarEnoughForApproxMass(particle)):
-            Force.applyForceByCOM(particle, self.centreOfMass)
+            particle.apply_force_COM(self.centreOfMass)
         #if self is internal, aka has children, recurse
         else:
             # Recurse through child nodes to get more precise total force
@@ -96,10 +101,9 @@ class BaseNode:
                 child.applyGravityTo(particle)
 
     def isFarEnoughForApproxMass(self, particle):
-        # s('regionwidth') / d('distance') < theta
-        # return False
-        d = self.centreOfMass.pos.dist(particle.pos)
-        return self.width / d < self.theta
+        #self.centreOfMass.pos.dist(particle.pos)
+        d = particle.calculate_distance(self.centreOfMass.pX, self.centreOfMass.pY)
+        return np.divide(self.width, d) < self.theta
 
     #No particle in this node, but there are children
     def isInternalNode(self):

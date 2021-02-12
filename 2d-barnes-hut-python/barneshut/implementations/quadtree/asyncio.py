@@ -1,6 +1,5 @@
 from barneshut.internals import constants
 from barneshut.internals.centreofmass import CentreOfMass
-from barneshut.internals.force import Force
 from . import BaseNode
 import asyncio
 from collections.abc import Iterable
