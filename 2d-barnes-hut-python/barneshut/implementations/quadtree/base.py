@@ -1,10 +1,11 @@
-from barneshut.internals import constants
 from barneshut.internals.particle import Particle, new_zero_particle
-
+from barneshut.internals.config import Config
 
 from collections.abc import Iterable
 import numpy as np
 
+#here's how to append to a np array, so we can use pdist
+#np.append(p, [x], axis=0)
 
 class BaseNode:
 
@@ -13,12 +14,13 @@ class BaseNode:
         self.height = size[1]
         self.x = x
         self.y = y
+        
         self.child_nodes = {"ne": None, "se": None, "sw": None, "nw": None}
         # TODO: keep multiple particles
         self.particle = None
         # a COM is now a Particle, so we can reuse the class, since it's *mostly* the same thing
         self.centre_of_mass = new_zero_particle()
-        self.theta = constants.THETA
+        self.theta = Config.get("bh", "theta")
 
     # utility method for classes that inherit us to create their own type children
     def create_new_node(self, *args):
@@ -62,24 +64,6 @@ class BaseNode:
         # Node has fallen out of bounds, so we just eat it
         print ('Node moved out of bounds')
 
-    def create_children(self):
-        subW = self.width / 2
-        subH = self.height / 2
-        subSize = (subW, subH)
-        x = self.x
-        y = self.y
-        self.child_nodes["nw"] = self.create_new_node(subSize, x, y)
-        self.child_nodes["ne"] = self.create_new_node(subSize, x + subW, y)
-        self.child_nodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
-        self.child_nodes["sw"] = self.create_new_node(subSize, x, y + subH)
-
-    def bounds_around(self, particle):
-        x, y = particle.position[0], particle.position[1]
-        return (x >= self.x
-                and y >= self.y
-                and x < self.x + self.width
-                and y < self.y + self.height)
-
     def apply_gravity_to_partition(self, arg):
         # if it's not a list, create one
         if not isinstance(arg, Iterable):
@@ -109,6 +93,24 @@ class BaseNode:
             # Recurse through child nodes to get more precise total force
             for child in self.child_nodes.values():
                 child.apply_gravity(particle)
+
+    def create_children(self):
+        subW = self.width / 2
+        subH = self.height / 2
+        subSize = (subW, subH)
+        x = self.x
+        y = self.y
+        self.child_nodes["nw"] = self.create_new_node(subSize, x, y)
+        self.child_nodes["ne"] = self.create_new_node(subSize, x + subW, y)
+        self.child_nodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
+        self.child_nodes["sw"] = self.create_new_node(subSize, x, y + subH)
+
+    def bounds_around(self, particle):
+        x, y = particle.position[0], particle.position[1]
+        return (x >= self.x
+                and y >= self.y
+                and x < self.x + self.width
+                and y < self.y + self.height)
 
     def approximation_distance(self, particle):
         distance = particle.calculate_distance(self.centre_of_mass)

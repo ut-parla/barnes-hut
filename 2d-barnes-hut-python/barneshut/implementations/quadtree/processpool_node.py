@@ -1,5 +1,3 @@
-from barneshut.internals import constants
-from barneshut.internals.centreofmass import CentreOfMass
 from . import BaseNode
 
 

@@ -44,5 +44,5 @@ for i in range(WARM+EXPS):
 
 print(f"numpy: {statistics.mean(np_times)}")
 print(f"pdist: {statistics.mean(pd_times)}")
-print(f"pdist: {statistics.mean(np2_times)}")
+print(f"npbcast: {statistics.mean(np2_times)}")
 

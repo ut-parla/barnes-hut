@@ -1,9 +1,10 @@
 from barneshut.implementations.quadtree.base import BaseNode
 from .base import BaseBarnesHut
 from timer import Timer
+from barneshut.internals.config import Config
 import numpy as np
 
-class SimpleBarnesHut (BaseBarnesHut):
+class SequentialBarnesHut (BaseBarnesHut):
 
     def create_tree(self):
         with Timer.get_handle("create_tree"):

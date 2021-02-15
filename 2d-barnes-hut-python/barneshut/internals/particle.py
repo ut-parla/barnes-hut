@@ -1,4 +1,4 @@
-from . import constants as cn
+from .config import Config
 import numpy as np
 from numba import f4, i4
 from numba.experimental import jitclass
@@ -30,15 +30,15 @@ class Particle:
     # G = 6.673 x 10-11 Nm^2/kg^2
     # Fgrav = (G*m1*m2)/d^2
     # F = m*a
-    def apply_force(self, other, isCOM=False):
+    def apply_force(self, other, is_COM=False):
         diff = self.position - other.position
         dist = np.linalg.norm(diff)
-        f = (cn.GRAVITATIONAL_CONSTANT * self.mass * other.mass) / (dist*dist)
+        f = (Config.get("bh", "grav_constant") * self.mass * other.mass) / (dist*dist)
 
         # update self acceleration
         self.acceleration -= (f * diff) / self.mass
         # update other particles acceleration
-        if not isCOM:
+        if not is_COM:
             other.acceleration += (f * diff) / self.mass
 
     def tick(self):
@@ -48,9 +48,10 @@ class Particle:
         #self.pos.y += (cn.TICK_SECONDS * self.velocity.y) + (0.5 * self.accel.y * cn.TICK_SECONDS*cn.TICK_SECONDS)
 
         # current equations are from 3 step integrator from https://www.maths.tcd.ie/~btyrrel/nbody.pdf
-        self.position += self.velocity * cn.TICK_SECONDS/2
-        self.velocity += self.acceleration * cn.TICK_SECONDS
-        self.position += self.velocity * cn.TICK_SECONDS/2
+        tickt = float(Config.get("bh", "tick_seconds"))
+        self.position += self.velocity * tickt/2
+        self.velocity += self.acceleration * tickt
+        self.position += self.velocity * tickt/2
         self.acceleration = np.zeros(2)
     
     def combine_COM(self, otherCOM):
