@@ -3,10 +3,6 @@ from barneshut.internals.config import Config
 from collections.abc import Iterable
 import numpy as np
 
-#here's how to append to a np array, so we can use pdist
-#np.append(p, [x], axis=0)
-
-
 class BaseNode:
 
     def __init__(self, size, x, y):
@@ -23,6 +19,13 @@ class BaseNode:
     def create_new_node(self, *args):
         return BaseNode(*args)
 
+    def find_leaves(self, leaves):
+        if self.is_leaf():
+            leaves.append(self)
+        else:
+            for node in self.child_nodes.values():
+                node.find_leaves(leaves)
+
     def add_particle(self, new_particle):
         # if we are leaf and have space, add to our set
         if self.is_leaf() and not self.particle_set.is_full():
@@ -32,13 +35,12 @@ class BaseNode:
         #leaf, full  or   not leaf, not full
         else:
             # if we don't have children node setup, create them
-            if (self.child_nodes['ne'] is None):
+            if self.is_leaf():
                 self.create_children()
 
-            #if we got here we need to flush all particles
-            #to children
+            #if we got here we need to flush all particles to children
             parts = [new_particle]
-            if self.particle_set.is_full():
+            if not self.particle_set.is_empty():
                 parts.append(self.particle_set.get_particles())    
                 self.particle_set = ParticleSet()
 
@@ -50,7 +52,7 @@ class BaseNode:
 
         for candidate in candidates:
             particles = []
-            #if this is  only one particle
+            #if this is only one particle
             if candidate.shape == (7,):
                 particles.append(candidate)
             #if not, it's a ndarray
@@ -69,15 +71,11 @@ class BaseNode:
     def apply_gravity(self, other_node):
         # if empty, just return
         if other_node.is_leaf():
-
             if other_node.particle_set.is_empty():
                 return
-            elif self.approximation_distance(other_node):
-                #TODO: approximate by COM
-                pass
             else:
-                #TODO: do particle to particle generate
-                pass
+                use_COM = self.approximation_distance(other_node)
+                self.particle_set.apply_force(other_node, use_COM)
 
         #if self is internal, aka has children, recurse
         else:
@@ -129,7 +127,7 @@ class BaseNode:
         self.child_nodes["sw"] = self.create_new_node(subSize, x, y + subH)
 
     def bounds_around(self, particle):
-        x, y = particle.position[0], particle.position[1]
+        x, y = particle[0:1], particle[1:2]
         return (x >= self.x
                 and y >= self.y
                 and x < self.x + self.width

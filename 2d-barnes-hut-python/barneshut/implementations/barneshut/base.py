@@ -1,4 +1,4 @@
-from barneshut.internals.particle import Particle, particle_from_line
+from barneshut.internals.particle import Particle
 
 
 class BaseBarnesHut:
@@ -13,7 +13,7 @@ class BaseBarnesHut:
             self.n_particles = int(fp.readline())
             # read all lines, one particle per line
             for _ in range(self.n_particles):
-                p = particle_from_line(fp.readline())
+                p = Particle.particle_from_line(fp.readline())
                 self.particles.append(p)
 
     def create_tree(self):

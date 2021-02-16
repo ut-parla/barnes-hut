@@ -10,9 +10,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         with Timer.get_handle("create_tree"):
             self.root_node = BaseNode(self.size, 0, 0)
             for particle in self.particles:
-                # TODO: parallelize ticks, this will be FAST
-                particle.tick()
-                self.root_node.add_particle(particle)
+                self.root_node.add_particle(particle.get_array())
 
     def run(self, n_iterations, partitions=None, print_particles=False):
         # time whole run
@@ -21,10 +19,17 @@ class SequentialBarnesHut (BaseBarnesHut):
                 # (re)create the tree for the next step
                 self.create_tree()
 
+                # TODO: just wanna make this work, we can do this step during construction later
+                leaves = []
+                self.root_node.find_leaves(leaves)
+
                 # time each iteration
                 with Timer.get_handle("iteration"):
-                    # calc changes due to gravity
-                    map(self.root_node.apply_gravity, self.particles)
+                    for leaf in leaves:
+                        leaf.apply_gravity(self.root_node)
+                    
+                    for leaf in leaves:
+                        leaf.tick()
 
         Timer.reset_and_print()
         if print_particles:

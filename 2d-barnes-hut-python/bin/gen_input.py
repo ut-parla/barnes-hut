@@ -17,9 +17,9 @@ class Particle:
         return "{}, {}, {}, {}, {}\n".format(
             self.x,
             self.y,
+            self.mass,
             self.xVel,
-            self.yVel,
-            self.mass
+            self.yVel
         )
 
 
