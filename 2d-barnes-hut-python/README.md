@@ -3,11 +3,11 @@
 
 ## TODO:
 
-- [ ] Make a tree node hold more than one particle
+- [ ] Use GPU/Numba
 - [ ] Add cost based partitioning
 - [ ] Improve/parallelize tree building 
-- [ ] Add Numba support (force.py fails because a parameter is Particle. It also seems like the function is too small for numba)
 - [ ] Fix multi process implementation
+- [x] Make a tree node hold more than one particle
 - [x] Set print particle positions as optional flag
 - [x] Chunk particles to reduce task-set size. (result: not good, at least for parla)
 - [x] Cleanup pygame

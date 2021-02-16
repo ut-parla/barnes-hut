@@ -1,4 +1,4 @@
-from barneshut.internals import Particle, ParticleSet
+from barneshut.internals import Particle, Cloud
 from barneshut.internals.config import Config
 from collections.abc import Iterable
 import numpy as np
@@ -11,13 +11,16 @@ class BaseNode:
         self.x = x
         self.y = y
         self.child_nodes = {"ne": None, "se": None, "sw": None, "nw": None}
-        self.particle_set = ParticleSet()
+        self.cloud = Cloud()
         # a COM is now a Particle
         self.theta = Config.get("bh", "theta")
 
     # utility method for classes that inherit us to create their own type children
     def create_new_node(self, *args):
         return BaseNode(*args)
+
+    def tick(self):
+        self.cloud.tick_particles()
 
     def find_leaves(self, leaves):
         if self.is_leaf():
@@ -28,61 +31,54 @@ class BaseNode:
 
     def add_particle(self, new_particle):
         # if we are leaf and have space, add to our set
-        if self.is_leaf() and not self.particle_set.is_full():
-            self.particle_set.add_particle(new_particle)
+        if self.is_leaf() and not self.cloud.is_full():
+            self.cloud.add_particle(new_particle)
 
-        # otherwise add to children
-        #leaf, full  or   not leaf, not full
+        # otherwise add to children:   (leaf, full) or (not leaf, not full)
         else:
             # if we don't have children node setup, create them
             if self.is_leaf():
                 self.create_children()
 
             #if we got here we need to flush all particles to children
-            parts = [new_particle]
-            if not self.particle_set.is_empty():
-                parts.append(self.particle_set.get_particles())    
-                self.particle_set = ParticleSet()
+            if not self.cloud.is_empty():
+                self.add_particle_to_children(self.cloud.get_particles())
+                self.cloud = Cloud()
 
-            #now add them all
-            self.add_particle_to_children(parts)
+            #now add the new one
+            self.add_particle_to_children(np.array([new_particle]))
 
-    def add_particle_to_children(self, candidates):
-        #TODO something better since we are adding a WHOLE LOT of particles at once, maybe a map
-
-        for candidate in candidates:
-            particles = []
-            #if this is only one particle
-            if candidate.shape == (7,):
-                particles.append(candidate)
-            #if not, it's a ndarray
+    def add_particle_to_children(self, particles):
+        for p in particles:
+            for node in self.child_nodes.values():
+                if node.bounds_around(p):
+                    node.add_particle(p)
+                    break
             else:
-                particles = candidate
-
-            for p in particles:
-                for node in self.child_nodes.values():
-                    if node.bounds_around(p):
-                        node.add_particle(p)
-
-        # Node has fallen out of bounds, so we just eat it
-        print ('Node moved out of bounds')
+                # Node has fallen out of bounds, so we just eat it
+                print ('Node moved out of bounds')
 
     # initially other_node is the root
     def apply_gravity(self, other_node):
+        if self.cloud.is_empty():
+            return
+
         # if empty, just return
         if other_node.is_leaf():
-            if other_node.particle_set.is_empty():
+            if other_node.cloud.is_empty():
                 return
             else:
                 use_COM = self.approximation_distance(other_node)
-                self.particle_set.apply_force(other_node, use_COM)
+                self.cloud.apply_force(other_node, use_COM)
 
         #if self is internal, aka has children, recurse
         else:
+            print("WE SHOULDN'T BE HERE")
             # Recurse through child nodes to get more precise total force
             for child in other_node.child_nodes.values():
                 self.apply_gravity(child)
 
+    # this checks if nodes are neighbors
     def approximation_distance(self, other_node):
         corners1 = self.get_corners()
         corners2 = other_node.get_corners()
@@ -97,7 +93,6 @@ class BaseNode:
                     ((y >= py1 and y <= py2) or (y >= py2 and y <= py1)) 
                    ):
                     return False
-
         for x in corners2[0]:
             for y in corners2[1]:
                 px1, px2 = corners1[0]
@@ -109,6 +104,9 @@ class BaseNode:
                     return False
 
         return True
+
+    def get_COM(self):
+        return self.cloud.get_COM()
 
     def get_corners(self):
         x1, x2 = self.x, self.x + self.width

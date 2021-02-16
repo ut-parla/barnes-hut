@@ -4,9 +4,8 @@ import random
 
 MAX_PARTICLE_MASS = 5
 
-
 class Particle:
-    def __init__(self, x, y, xVel, yVel, mass):
+    def __init__(self, x, y, mass, xVel, yVel):
         self.x = x
         self.y = y
         self.xVel = xVel
@@ -21,7 +20,6 @@ class Particle:
             self.xVel,
             self.yVel
         )
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -54,15 +52,15 @@ def generateParticles(max_coord, num_particles):
         x = random.gauss(w/2, w/12)
         y = random.gauss(h/2, h/12)
 
-        xVel = (random.random()-0.5) * 5
-        yVel = (random.random()-0.5) * 5
+        xVel = (random.random()-0.5) * 2
+        yVel = (random.random()-0.5) * 2
         #angle = random.gauss(math.pi*2, math.pi/2)
         # xVel = sun.pos.dist(pos) * math.sin(angle)
         # yVel = sun.pos.dist(pos) * math.cos(angle)
 
         # random mass
         mass = random.random() * MAX_PARTICLE_MASS
-        particles.append(Particle(x, y, xVel, yVel, mass))
+        particles.append(Particle(x, y, mass, xVel, yVel))
 
     return particles
 

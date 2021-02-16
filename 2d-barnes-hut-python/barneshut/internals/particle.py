@@ -7,5 +7,4 @@ class Particle(np.ndarray):
         fields = [float(x) for x in line.split(",")]
         part = Particle(7)
         part[:5] = fields
-
         return part

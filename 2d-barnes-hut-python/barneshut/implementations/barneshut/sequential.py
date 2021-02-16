@@ -10,7 +10,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         with Timer.get_handle("create_tree"):
             self.root_node = BaseNode(self.size, 0, 0)
             for particle in self.particles:
-                self.root_node.add_particle(particle.get_array())
+                self.root_node.add_particle(particle)
 
     def run(self, n_iterations, partitions=None, print_particles=False):
         # time whole run
@@ -22,11 +22,14 @@ class SequentialBarnesHut (BaseBarnesHut):
                 # TODO: just wanna make this work, we can do this step during construction later
                 leaves = []
                 self.root_node.find_leaves(leaves)
+                print(f"we have {len(leaves)} leaves")
 
                 # time each iteration
                 with Timer.get_handle("iteration"):
-                    for leaf in leaves:
-                        leaf.apply_gravity(self.root_node)
+                    for l1 in leaves:
+                        for l2 in leaves:
+                            if l1 is not l2:
+                                l1.apply_gravity(l2)
                     
                     for leaf in leaves:
                         leaf.tick()
