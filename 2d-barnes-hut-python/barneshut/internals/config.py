@@ -10,10 +10,8 @@ class Config:
 
     def __init__(self, ini_path=None):
         default_ini = configs_dir / "default.ini"
-        ini_path = configs_dir / ini_path 
         self.parser = ConfigParser()
-        in_files = [default_ini] + ([ini_path] if ini_path is not None else [])
-        self.parser.read(in_files)
+        self.parser.read(ini_path if ini_path is not None else default_ini)
 
     @staticmethod
     def read_file(ini_path):

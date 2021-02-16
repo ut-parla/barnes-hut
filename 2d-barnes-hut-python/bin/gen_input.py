@@ -59,7 +59,7 @@ def generateParticles(max_coord, num_particles):
         # yVel = sun.pos.dist(pos) * math.cos(angle)
 
         # random mass
-        mass = random.random() * MAX_PARTICLE_MASS
+        mass = 1+ random.random() * (MAX_PARTICLE_MASS-1)
         particles.append(Particle(x, y, mass, xVel, yVel))
 
     return particles

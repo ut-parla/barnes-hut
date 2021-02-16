@@ -42,7 +42,7 @@ class BaseNode:
 
             #if we got here we need to flush all particles to children
             if not self.cloud.is_empty():
-                self.add_particle_to_children(self.cloud.get_particles())
+                self.add_particle_to_children(self.cloud.particles)
                 self.cloud = Cloud()
 
             #now add the new one
@@ -69,14 +69,14 @@ class BaseNode:
                 return
             else:
                 use_COM = self.approximation_distance(other_node)
-                self.cloud.apply_force(other_node, use_COM)
+                self.cloud.apply_force(other_node.cloud, use_COM)
 
         #if self is internal, aka has children, recurse
         else:
             print("WE SHOULDN'T BE HERE")
             # Recurse through child nodes to get more precise total force
             for child in other_node.child_nodes.values():
-                self.apply_gravity(child)
+                self.apply_gravity(child.cloud)
 
     # this checks if nodes are neighbors
     def approximation_distance(self, other_node):
@@ -104,9 +104,6 @@ class BaseNode:
                     return False
 
         return True
-
-    def get_COM(self):
-        return self.cloud.get_COM()
 
     def get_corners(self):
         x1, x2 = self.x, self.x + self.width
