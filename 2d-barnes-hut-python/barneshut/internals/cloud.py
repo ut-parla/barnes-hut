@@ -60,18 +60,26 @@ class Cloud:
         # squareform(pdist(self.particles, other_set.particles))
         GRAV = float(Config.get("bh", "grav_constant"))
         if not is_COM:
-            for p1 in self.particles:
-                for p2 in other_set.particles:
-                    try:
-                        diff = p1[:POS_Y+1] - p2[:POS_Y+1]
-                        dist = np.linalg.norm(diff)
-                        f = (GRAV * p1[MASS:MASS+1] * p2[MASS:MASS+1]) / (dist*dist)
+            for p in self.particles:
+                p2 = other_set.particles
+                
+                #diff = p1[:POS_Y+1] - p2[:POS_Y+1]
+                p2[:, POS_X:POS_Y+1] -= p[POS_X:POS_Y+1]
+                
+                pp2 = np.concatenate(([p], p2))
+                dist_matrix = squareform(pdist(pp2)) 
 
-                        p1[ACC_X:ACC_Y+1] -= (f * diff) / p1[MASS:MASS+1]
-                        p2[ACC_X:ACC_Y+1] += (f * diff) / p2[MASS:MASS+1]
-                    except Exception as e:
-                        print(f"FORCE: diff: {diff}\ndist: {dist}\nf: {f}\nM1: {p1[MASS:MASS+1]}\nM2: {p2[MASS:MASS+1]}")
-                        raise e
+                # f = (GRAV * p1[MASS:MASS+1] * p2[MASS:MASS+1]) / (dist*dist)
+                f = GRAV * p[MASS:MASS+1] * p2[:, MASS:MASS+1]
+                # slice: ignore first row since it's p itself, and only use first column, which is
+                # pairwise distance of p to all points in p2
+                f /= dist_matrix[1:,:1]
+
+                #p1[ACC_X:ACC_Y+1] -= (f * diff) / p1[MASS:MASS+1]
+                # calculate forces from all of p2 to p
+                p[ACC_X:ACC_Y+1]    -= np.add.reduce((f*p2[:, POS_X:POS_Y+1]) / p[MASS:MASS+1])
+                # calculate forces from p to all of p2
+                p2[:,ACC_X:ACC_Y+1] += (f * p2[:, POS_X:POS_Y+1]) / p2[:,MASS:MASS+1]
         else:
             com = other_set.get_COM()
             for p1 in self.particles:

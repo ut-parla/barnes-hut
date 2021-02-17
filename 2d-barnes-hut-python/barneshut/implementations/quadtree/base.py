@@ -70,13 +70,7 @@ class BaseNode:
             else:
                 use_COM = self.approximation_distance(other_node)
                 self.cloud.apply_force(other_node.cloud, use_COM)
-
-        #if self is internal, aka has children, recurse
-        else:
-            print("WE SHOULDN'T BE HERE")
-            # Recurse through child nodes to get more precise total force
-            for child in other_node.child_nodes.values():
-                self.apply_gravity(child.cloud)
+        #we dont need to recurse since we are interacting leaf to leaf already
 
     # this checks if nodes are neighbors
     def approximation_distance(self, other_node):

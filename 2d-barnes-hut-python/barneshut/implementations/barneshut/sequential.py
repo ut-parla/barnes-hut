@@ -28,6 +28,7 @@ class SequentialBarnesHut (BaseBarnesHut):
                 with Timer.get_handle("iteration"):
                     for l1 in leaves:
                         for l2 in leaves:
+                            # TODO: remove this, need to deal with duplicate calculations
                             if l1 is not l2:
                                 l1.apply_gravity(l2)
                     
