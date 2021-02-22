@@ -1,0 +1,7 @@
+POS_X = 0
+POS_Y = 1
+MASS  = 2
+VEL_X = 3
+VEL_Y = 4
+ACC_X = 5
+ACC_Y = 6

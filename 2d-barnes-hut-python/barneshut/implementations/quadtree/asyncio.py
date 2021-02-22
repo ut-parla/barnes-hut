@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 class AsyncNode(BaseNode):
 
-    async def apply_gravity_to_partition(self, arg):
+    async def apply_force_to_partition(self, arg):
         # if it's not a list, create one
         if not isinstance(arg, Iterable):
             particles = [arg,]
@@ -12,14 +12,14 @@ class AsyncNode(BaseNode):
             particles = arg
 
         for p in particles:
-            self.apply_gravity(p)
+            self.apply_force(p)
 
-        #tasks = [self.apply_gravity(p) for p in particles]
+        #tasks = [self.apply_force(p) for p in particles]
         #await asyncio.gather(*tasks)
 
 
     #whoever is calling this is passing root as self
-    def apply_gravity(self, particle):
+    def apply_force(self, particle):
         #if both particles are the same or there is no particle in self
         if (self.particle is particle or self.is_empty()):
             return
@@ -33,9 +33,9 @@ class AsyncNode(BaseNode):
         else:
             # Recurse through child nodes to get more precise total force
             # Create all coroutines into an array
-            #tasks = [p.apply_gravity(particle) for p in self.child_nodes.values()]
+            #tasks = [p.apply_force(particle) for p in self.child_nodes.values()]
             #await asyncio.gather(*tasks)
 
             for child in self.child_nodes.values():
-                child.apply_gravity(particle)
+                child.apply_force(particle)
 

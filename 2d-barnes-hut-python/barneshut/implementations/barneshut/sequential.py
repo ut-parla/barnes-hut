@@ -3,6 +3,7 @@ from .base import BaseBarnesHut
 from timer import Timer
 from barneshut.internals.config import Config
 import numpy as np
+from itertools import combinations
 
 class SequentialBarnesHut (BaseBarnesHut):
 
@@ -26,11 +27,9 @@ class SequentialBarnesHut (BaseBarnesHut):
 
                 # time each iteration
                 with Timer.get_handle("iteration"):
-                    for l1 in leaves:
-                        for l2 in leaves:
-                            # TODO: remove this, need to deal with duplicate calculations
-                            if l1 is not l2:
-                                l1.apply_gravity(l2)
+                    for l1,l2 in combinations(leaves, 2):
+                        if l1 is not l2:
+                            l1.apply_force(l2)
                     
                     for leaf in leaves:
                         leaf.tick()

@@ -19,7 +19,12 @@ class Config:
         config_instance = Config(ini_path)
     
     @staticmethod
-    def get(section, option):
-        return config_instance.parser[section][option]
+    def get(*args, **kwargs):
+        return config_instance.parser.get(*args, **kwargs)
+
+    @staticmethod
+    def getint(*args, **kwargs):
+        return config_instance.parser.getint(*args, **kwargs)
+
 
 config_instance = None

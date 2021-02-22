@@ -59,7 +59,7 @@ class BaseNode:
                 print ('Node moved out of bounds')
 
     # initially other_node is the root
-    def apply_gravity(self, other_node):
+    def apply_force(self, other_node):
         if self.cloud.is_empty():
             return
 

@@ -11,8 +11,11 @@ n = int(sys.argv[2])
 ini_file = sys.argv[3] or None
 
 bh = BarnesHut(ini_file)
+
 bh.read_input_file(fname)
 bh.run(n)
+
+
 
 # bh2 = ProcessPoolBarnesHut(5)
 # bh2.read_particles_from_file(fname)
