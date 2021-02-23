@@ -14,8 +14,9 @@ def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_acc
 
     n = cloud_positions.shape[0]
     for i in range(n):
-        dif = np.fabs(p_pos-cloud_positions[i])
-        dist = np.sqrt(np.sum(dif))
-        f = (G * p_mass * cloud_masses[i]) / dist*dist
+        dif = p_pos-cloud_positions[i]
+        dist = np.sqrt(np.sum(np.square(dif)))
+
+        f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
         p_accel         -= (f * dif / p_mass)
-        cloud_accels[i] -= (f * dif / cloud_masses[i])
+        cloud_accels[i] += (f * dif / cloud_masses[i])

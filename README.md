@@ -26,3 +26,7 @@ Octree only. All python.
 
 Octree + BH. Uses a mess of things, like MPI and Cython.
 Looks like a good Octree to reuse.
+
+## https://github.com/PWhiddy/Nbody-Gravity/blob/master/BarnzNhutt.cpp
+
+Sanity check for equations
