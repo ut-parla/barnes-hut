@@ -3,7 +3,7 @@ from numba import guvectorize, float64, int64, njit, cuda, jit
 
 
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
-             '(d),(), (n,d), (n), () -> (d), (n,d)',nopython=False)
+             '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="cpu")
 def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
     # AFAIK, the cool part of guvectorize is that if this function is called with a matrix of points
     # instead of a single point, it will be vectorized and possibly accelerated

@@ -104,6 +104,7 @@ class Cloud:
 
     def apply_force(self, other_cloud, use_COM=False):
         G = float(Config.get("bh", "grav_constant"))
+        #if use_COM then we don't do all p2p computation, instead we get the COM of the cloud
         other = other_cloud if use_COM is False else other_cloud.get_COM()
         # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
         self.__apply_force(other, use_COM)
@@ -224,7 +225,6 @@ class Cloud:
         self.accelerations        += acc[:self.n,:]
         other_cloud.accelerations += acc[self.n:,:]
 
-            
     def tick_particles(self):
         # current equations are from 3 step integrator from https://www.maths.tcd.ie/~btyrrel/nbody.pdf
         #print(f"TICK: POS: {self.particles[POS_X:POS_X+1]}\nVEL: {self.particles[VEL_X:VEL_X+1]}")
