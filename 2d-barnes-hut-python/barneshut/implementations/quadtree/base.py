@@ -42,21 +42,23 @@ class BaseNode:
 
             #if we got here we need to flush all particles to children
             if not self.cloud.is_empty():
-                self.add_particle_to_children(self.cloud.particles)
+                for i in range(self.cloud.n):
+                    # TODO: find a better way to do this
+                    p = Particle(self.cloud.positions[i], self.cloud.masses[i], self.cloud.velocities[i])
+                    self.add_particle_to_children(p)
                 self.cloud = Cloud()
 
             #now add the new one
-            self.add_particle_to_children(np.array([new_particle]))
+            self.add_particle_to_children(new_particle)
 
-    def add_particle_to_children(self, particles):
-        for p in particles:
-            for node in self.child_nodes.values():
-                if node.bounds_around(p):
-                    node.add_particle(p)
-                    break
-            else:
-                # Node has fallen out of bounds, so we just eat it
-                print ('Node moved out of bounds')
+    def add_particle_to_children(self, p):
+        for node in self.child_nodes.values():
+            if node.bounds_around(p.position):
+                node.add_particle(p)
+                break
+        else:
+            # Node has fallen out of bounds, so we just eat it
+            print ('Node moved out of bounds')
 
     # initially other_node is the root
     def apply_force(self, other_node):

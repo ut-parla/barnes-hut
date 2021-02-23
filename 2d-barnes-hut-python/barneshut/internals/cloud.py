@@ -5,6 +5,10 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from scipy.linalg.blas import zhpr, dspr2, zhpmv
 from numpy.linalg import norm
+from .guvectorize_ops import *
+
+# hopefully it won't be too hard to switch from 2d to 3d
+N_DIM = 2
 
 class Cloud:
 
@@ -12,16 +16,13 @@ class Cloud:
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
 
-        # default constructor, in which the cloud has no particles
-        if initd_array is None:
-            self.particle_array = np.ndarray((self.max_particles, 7))
-            self.n = 0
-        # create the cloud with some particles, like a concatenation of two clouds
-        else:
-            self.particle_array = initd_array
-            self.n = initd_array.shape[0]
+        self.n = 0
+        self.__positions = np.ndarray((self.max_particles, N_DIM))
+        self.__velocities = np.ndarray((self.max_particles, N_DIM))
+        self.__accelerations = np.ndarray((self.max_particles, N_DIM))
+        self.__masses = np.ndarray(self.max_particles)
 
-        # TODO: this is not the best place to do this
+        # TODO: this is not the best place/way to do this
         fc = Config.get("general", "force_calculation")
         if fc == "p2cloud":
             self.__apply_force_c2c = self.__apply_force_c2c_particle2cloudloop
@@ -29,30 +30,39 @@ class Cloud:
             self.__apply_force_c2c = self.__apply_force_c2c_vect
         elif fc == "blas":
             self.__apply_force_c2c = self.__apply_force_c2c_blas
+        elif fc == "guvectorize1":
+            self.__apply_force_c2c = self.__apply_force_c2c_guvectorize
 
-    @property
-    def particles(self):
-        return self.particle_array[:self.n]
-
+    #
+    # general getter/setters
+    #
     @property
     def positions(self):
-        return self.particle_array[:self.n,POS_X:POS_Y+1]
+        return self.__positions[:self.n]
 
-    @property
-    def masses(self):
-        return self.particle_array[:self.n,MASS:MASS+1]
-
-    @property
-    def accelerations(self):
-        return self.particle_array[:self.n,ACC_X:ACC_Y+1]
-
-    @accelerations.setter
-    def accelerations(self, acc):
-        self.particle_array[:self.n,ACC_X:ACC_Y+1] = acc
+    @positions.setter
+    def positions(self, pos):
+        self.__positions[:self.n] = pos
 
     @property
     def velocities(self):
-        return self.particle_array[:self.n,VEL_X:VEL_Y+1]
+        return self.__velocities[:self.n]
+
+    @positions.setter
+    def velocities(self, v):
+        self.__velocities[:self.n] = v
+
+    @property
+    def masses(self):
+        return self.__masses[:self.n]
+    
+    @property
+    def accelerations(self):
+        return self.__accelerations[:self.n]
+
+    @accelerations.setter
+    def accelerations(self, acc):
+        self.__accelerations[:self.n] = acc
 
     def is_empty(self):
         return self.n == 0
@@ -60,28 +70,28 @@ class Cloud:
     def is_full(self):
         return self.n >= self.max_particles
 
-    def add_particle(self, part):
-        self.particle_array[self.n] = part
+    def add_particle(self, part: Particle):
+        self.__positions[self.n] = part.position
+        self.__velocities[self.n] = part.velocity
+        self.__masses[self.n] = part.mass
+        self.__accelerations[self.n] = 0.0
         self.n += 1
 
     def concatenation(self, other_cloud):
-        return Cloud( np.concatenate((self.particles, other_cloud.particles)) )
+        #return Cloud( np.concatenate((self.particles, other_cloud.particles)) )
+        # TODO: fix if we need this
+        pass
 
     def get_COM(self):
         if self.COM is None:
-            #ppm = np.multiply.reduce(self.particles[:MASS], axis=1)
             # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
-            mx = np.multiply(self.particles[:,POS_X:POS_X+1], self.particles[:,MASS:MASS+1])
-            my = np.multiply(self.particles[:,POS_Y:POS_Y+1], self.particles[:,MASS:MASS+1])
-            M  = np.sum(self.particles[:, MASS:MASS+1])
+            mx = np.multiply(self.positions[:1], self.masses)
+            my = np.multiply(self.positions[1:2], self.masses)
+            M  = np.sum(self.masses)
             #print(f"COM: {mx}\n{my}\n{M}")
-
             newX = np.divide(np.sum(mx), M)
             newY = np.divide(np.sum(my), M)
-
-            self.COM = np.zeros(7)
-            self.COM[:3] = [newX, newY, M]
-
+            self.COM = Particle((newX, newY), M)
         return self.COM
 
     def apply_force(self, other_set, is_COM=False):
@@ -89,12 +99,24 @@ class Cloud:
         if not is_COM:
             self.__apply_force_c2c(other_set)
         else:
+            # TODO: do this faster too
             com = other_set.get_COM()
-            for p1 in self.particles:
-                diff = p1[:POS_Y+1] - com[:POS_Y+1]
-                dist = np.linalg.norm(diff)
-                f = np.divide(G * p1[MASS:MASS+1] * com[MASS:MASS+1], dist*dist)
-                p1[ACC_X:ACC_Y+1] -= (f * diff) / p1[MASS:MASS+1]
+            pass
+            #for p1 in self.particles:
+            #    diff = p1[:POS_Y+1] - com[:POS_Y+1]
+            #    dist = np.linalg.norm(diff)
+            #    f = np.divide(G * p1[MASS:MASS+1] * com[MASS:MASS+1], dist*dist)
+            #    p1[ACC_X:ACC_Y+1] -= (f * diff) / p1[MASS:MASS+1]
+
+    def __apply_force_c2c_guvectorize(self, other_cloud):
+        G = float(Config.get("bh", "grav_constant"))
+        # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
+        # this way numpy can vectorize these operations.
+        self_acc, other_acc = guvect_point_to_cloud(self.positions, self.masses, other_cloud.positions, other_cloud.masses, G)
+
+
+
+        input("Press Enter to continue...")
 
     # this is a somewhat naive approach using numpy
     def __apply_force_c2c_particle2cloudloop(self, other_cloud):
@@ -199,17 +221,8 @@ class Cloud:
         #print(f"TICK: POS: {self.particles[POS_X:POS_X+1]}\nVEL: {self.particles[VEL_X:VEL_X+1]}")
         tick = float(Config.get("bh", "tick_seconds"))
         
-        #self.position += self.velocity * tick/2
-        self.particles[:,POS_X:POS_X+1] += (self.particles[:,VEL_X:VEL_X+1] * (tick/2))
-        self.particles[:,POS_Y:POS_Y+1] += (self.particles[:,VEL_Y:VEL_Y+1] * (tick/2))
-        
-        #self.velocity += self.acceleration * tick
-        self.particles[:,VEL_X:VEL_X+1] += (self.particles[:,ACC_X:ACC_X+1] * tick)
-        self.particles[:,VEL_Y:VEL_Y+1] += (self.particles[:,ACC_Y:ACC_Y+1] * tick)
+        self.positions += self.velocities * tick/2        
+        self.velocities += self.accelerations * tick
+        self.positions += self.velocities * tick/2
 
-        #self.position += self.velocity * tick/2
-        self.particles[:,POS_X:POS_X+1] += (self.particles[:,VEL_X:VEL_X+1] * (tick/2))
-        self.particles[:,POS_Y:POS_Y+1] += (self.particles[:,VEL_Y:VEL_Y+1] * (tick/2))
-
-        #self.acceleration = np.zeros(2)
-        self.particles[:,ACC_X:ACC_Y+1] = .0
+        self.accelerations[:,:] = 0.0
