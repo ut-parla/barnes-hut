@@ -2,6 +2,9 @@ import numpy as np
 from numba import guvectorize, float64, int64, njit, cuda, jit
 
 
+# TODO: this won't work with CUDA because it requires only one return value and I can't figure
+# out how to do so. We could return it as the last element of cloud_accels, but then the reduction
+# yields the wrong result.
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="cpu")
 def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
@@ -13,6 +16,7 @@ def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_acc
     p_accel[:] = 0.0
 
     n = cloud_positions.shape[0]
+    # TODO: figure out if we can do array calculations here instead of a loop
     for i in range(n):
         dif = p_pos-cloud_positions[i]
         dist = np.sqrt(np.sum(np.square(dif)))
