@@ -131,13 +131,37 @@ class Cloud:
         else:
             c1, c2 = other_cloud, self
 
+        c2.n += 1
+        accs = guvect_point_to_cloud_v2(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        c2.n -= 1
+        
+        print(f"c1 has {c1.n} particles, c2 has {c2.n}")
+        print(f"accs {accs}\n")
+        #sliced = accs[:,:-1]
+        #print(f"sliced: {sliced}\n")
+        #print(f"accs reduced: {np.add.reduce(accs)}")
+
+        n = c2.n
+        sliced = accs[:, n::n]
+        sliced = sliced.squeeze(axis=1)
+        #sliced.reshape((c1.n,2))
+        print(f"c1 sliced: {sliced}\n")
+        print(f"shape  {sliced.shape}")
+
+        c2_acc = np.add.reduce(sliced)
+        #print(f"c2 reduce: {c2_acc}")
+
+        print("***************")
+
         c1_acc, c2_acc = guvect_point_to_cloud(c1.positions, c1.masses, c2.positions, c2.masses, G)
-        #print(f"c1 has {c1.n} particles, c2 has {c2.n}")
-        #print(f"c1:{c1_acc}\nc1 reduced: {np.add.reduce(c1_acc)}")
-        #print(f"c2: {c2_acc}\nc2 reduced: {np.add.reduce(c2_acc)}")
-        #input("Press Enter to continue...")
-        c1.accelerations += c1_acc
-        c2.accelerations += np.add.reduce(c2_acc)   
+        print(f"c1 has {c1.n} particles, c2 has {c2.n}")
+        print(f"c1:{c1_acc}")
+        print(f"c2 reduced: {np.add.reduce(c2_acc)}")
+
+        input("Press Enter to continue...")
+        
+#        c1.accelerations += c1_acc
+#        c2.accelerations += np.add.reduce(c2_acc)   
        
     # calculations below (pmende, vect and blas) are from this source:
     # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
@@ -159,7 +183,6 @@ class Cloud:
         # add accelerations
         self.accelerations        += acc[:self.n,:]
         other_cloud.accelerations += acc[self.n:,:]
-
 
     def __apply_force_blas(self, other_cloud, __is_COM):
         # get G, positions and masses of concatenation
