@@ -26,7 +26,6 @@ def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_acc
         cloud_accels[i] += (f * dif / cloud_masses[i])
 
 
-
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (n,d)', nopython=True, target="cpu")
 def guvect_point_to_cloud_v2(p_pos, p_mass, cloud_positions, cloud_masses, G, cloud_accels):

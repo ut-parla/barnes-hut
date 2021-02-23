@@ -19,10 +19,11 @@ class Cloud:
         # If we wanna get a cloud representation of a COM
         if com_particle is not None:
             self.n = 1
-            self.__positions = np.array([com_particle.position])
-            self.__masses = np.array([com_particle.mass])
-            self.__velocities = np.ndarray((1, N_DIM))
-            self.__accelerations = np.ndarray((1, N_DIM))
+            # we allocate an extra element because of guvectorize cuda stuff
+            self.__positions = np.array([com_particle.position, (0,0)])
+            self.__masses = np.array([com_particle.mass,0.0])
+            self.__velocities = np.ndarray((2, N_DIM))
+            self.__accelerations = np.ndarray((2, N_DIM))
         # want to concatenate clouds
         elif concatenation is not None:
             c1, c2 = concatenation
@@ -34,10 +35,11 @@ class Cloud:
         # if this is an empty Cloud creation
         else:
             self.n = 0
-            self.__positions = np.ndarray((self.max_particles, N_DIM))
-            self.__masses = np.ndarray(self.max_particles)
-            self.__velocities = np.ndarray((self.max_particles, N_DIM))
-            self.__accelerations = np.ndarray((self.max_particles, N_DIM))
+            # add one to max because of guvectorize cuda stuff
+            self.__positions = np.ndarray((self.max_particles+1, N_DIM))
+            self.__masses = np.ndarray(self.max_particles+1)
+            self.__velocities = np.ndarray((self.max_particles+1, N_DIM))
+            self.__accelerations = np.ndarray((self.max_particles+1, N_DIM))
 
         # TODO: this is not the best place/way to do this
         fc = Config.get("general", "force_calculation")
@@ -48,8 +50,10 @@ class Cloud:
         elif fc == "blas":
             #print("results using blas are not correct. this is simply an upper bound on performance")
             self.__apply_force = self.__apply_force_blas
-        elif fc == "guvectorize1":
-            self.__apply_force = self.__apply_force_guvectorize
+        elif fc == "guvec-v1":
+            self.__apply_force = self.__apply_force_guvectorize_v1
+        elif fc == "guvec-v2":
+            self.__apply_force = self.__apply_force_guvectorize_v2
 
     #
     # general getter/setters
@@ -120,7 +124,47 @@ class Cloud:
         # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
         self.__apply_force(other, use_COM)
 
-    def __apply_force_guvectorize(self, other_cloud, __is_COM):
+    def __apply_force_guvectorize_v2(self, other_cloud, __is_COM):
+        G = float(Config.get("bh", "grav_constant"))
+        # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
+        # this way numpy can vectorize these operations.
+
+        # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
+        if self.n >= other_cloud.n:
+            c1, c2 = self, other_cloud
+        else:
+            c1, c2 = other_cloud, self
+        #print(f"c1 has {c1.n} particles, c2 has {c2.n}")
+
+        # hack to change the dimension of output array, since v2 puts the c1 particle accelerations
+        # at the last element of each output matrix.
+        # this is why there's this whole slicing magic afterwards
+        c2.n += 1
+        accs = guvect_point_to_cloud_v2(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        c2.n -= 1
+
+        c2_sliced = accs[:,:-1]
+        c2_acc = np.add.reduce(c2_sliced)        
+        #print(f"c2_acc\n{c2_acc}")
+
+        n = c2.n
+        #print(f"accs\n{accs}")
+        c1_sliced = accs[:, n::n]
+        #print(f"c1_sliced:\n{c1_sliced}\n")
+        c1_acc = c1_sliced.squeeze(axis=1)
+        #print(f"c1_acc:\n{c1_acc}\n")
+        
+        #print("***************"*2)
+        #c1_acc, c2_acc = guvect_point_to_cloud(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        #print(f"c1 has {c1.n} particles, c2 has {c2.n}")
+        #print(f"c1:{c1_acc}")
+        #print(f"c2 reduced: {np.add.reduce(c2_acc)}")
+        #input("Press Enter to continue...")
+        
+        c1.accelerations += c1_acc
+        c2.accelerations += np.add.reduce(c2_acc)   
+       
+    def __apply_force_guvectorize_v1(self, other_cloud, __is_COM):
         G = float(Config.get("bh", "grav_constant"))
         # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
         # this way numpy can vectorize these operations.
@@ -131,38 +175,10 @@ class Cloud:
         else:
             c1, c2 = other_cloud, self
 
-        c2.n += 1
-        accs = guvect_point_to_cloud_v2(c1.positions, c1.masses, c2.positions, c2.masses, G)
-        c2.n -= 1
-        
-        print(f"c1 has {c1.n} particles, c2 has {c2.n}")
-        print(f"accs {accs}\n")
-        #sliced = accs[:,:-1]
-        #print(f"sliced: {sliced}\n")
-        #print(f"accs reduced: {np.add.reduce(accs)}")
-
-        n = c2.n
-        sliced = accs[:, n::n]
-        sliced = sliced.squeeze(axis=1)
-        #sliced.reshape((c1.n,2))
-        print(f"c1 sliced: {sliced}\n")
-        print(f"shape  {sliced.shape}")
-
-        c2_acc = np.add.reduce(sliced)
-        #print(f"c2 reduce: {c2_acc}")
-
-        print("***************")
-
         c1_acc, c2_acc = guvect_point_to_cloud(c1.positions, c1.masses, c2.positions, c2.masses, G)
-        print(f"c1 has {c1.n} particles, c2 has {c2.n}")
-        print(f"c1:{c1_acc}")
-        print(f"c2 reduced: {np.add.reduce(c2_acc)}")
+        c1.accelerations += c1_acc
+        c2.accelerations += np.add.reduce(c2_acc)
 
-        input("Press Enter to continue...")
-        
-#        c1.accelerations += c1_acc
-#        c2.accelerations += np.add.reduce(c2_acc)   
-       
     # calculations below (pmende, vect and blas) are from this source:
     # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
     def __apply_force_vect(self, other_cloud, __is_COM):
