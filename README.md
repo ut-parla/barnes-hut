@@ -1,10 +1,11 @@
 # barnes-hut
 
-run source ./activate.sh to create/activate the venv, will automatically install dependencies.
-It has a dependency on Parla, so it must be installed. I did it by activating the venv, cloning the
-Parla repo (https://github.com/ut-parla/Parla.py) and running python3 setup.py install.
-Parla is in the requirements.txt but it probably doesn't work.
+First the venv must be created and dependencies installed. The Makefile
+has a good start on how to do so. Running `make` should work for
+Debian based systems. It clones Parla.py and installs it using its setup.py
+There is a manual part related to llvm, which is printed during the make.
 
+After the venv is created, run `source ./activate.sh` to activate it.
 
 # sources
 
