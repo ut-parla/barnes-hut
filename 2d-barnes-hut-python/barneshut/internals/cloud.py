@@ -6,6 +6,7 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.linalg.blas import zhpr, dspr2, zhpmv
 from numpy.linalg import norm
 from .guvectorize_ops import *
+from functools import partialmethod
 
 # hopefully it won't be too hard to switch from 2d to 3d
 N_DIM = 2
@@ -50,10 +51,13 @@ class Cloud:
         elif fc == "blas":
             #print("results using blas are not correct. this is simply an upper bound on performance")
             self.__apply_force = self.__apply_force_blas
-        elif fc == "guvec-v1":
-            self.__apply_force = self.__apply_force_guvectorize_v1
-        elif fc == "guvec-v2":
-            self.__apply_force = self.__apply_force_guvectorize_v2
+        # TODO: I tried using partialmethod here but it didnt work
+        elif fc == "guvectorize-cpu":
+            self.__apply_force = self.__apply_force_guvectorize_cpu
+        elif fc == "guvectorize-parallel":
+            self.__apply_force = self.__apply_force_guvectorize_parallel
+        elif fc == "guvectorize-cuda":
+            self.__apply_force = self.__apply_force_guvectorize_cuda
 
     #
     # general getter/setters
@@ -124,11 +128,8 @@ class Cloud:
         # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
         self.__apply_force(other, use_COM)
 
-    def __apply_force_guvectorize_v2(self, other_cloud, __is_COM):
+    def __apply_force_guvectorize_cuda(self, other_cloud, __is_COM):
         G = float(Config.get("bh", "grav_constant"))
-        # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
-        # this way numpy can vectorize these operations.
-
         # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
         if self.n >= other_cloud.n:
             c1, c2 = self, other_cloud
@@ -140,7 +141,7 @@ class Cloud:
         # at the last element of each output matrix.
         # this is why there's this whole slicing magic afterwards
         c2.n += 1
-        accs = guvect_point_to_cloud_v2(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        accs = guvect_point_to_cloud_cuda(c1.positions, c1.masses, c2.positions, c2.masses, G)
         c2.n -= 1
 
         c2_sliced = accs[:,:-1]
@@ -153,31 +154,28 @@ class Cloud:
         #print(f"c1_sliced:\n{c1_sliced}\n")
         c1_acc = c1_sliced.squeeze(axis=1)
         #print(f"c1_acc:\n{c1_acc}\n")
-        
-        #print("***************"*2)
-        #c1_acc, c2_acc = guvect_point_to_cloud(c1.positions, c1.masses, c2.positions, c2.masses, G)
-        #print(f"c1 has {c1.n} particles, c2 has {c2.n}")
-        #print(f"c1:{c1_acc}")
-        #print(f"c2 reduced: {np.add.reduce(c2_acc)}")
-        #input("Press Enter to continue...")
-        
+                
         c1.accelerations += c1_acc
         c2.accelerations += np.add.reduce(c2_acc)   
        
-    def __apply_force_guvectorize_v1(self, other_cloud, __is_COM):
+    def __apply_force_guvectorize_host(self, other_cloud, __is_COM, func):
         G = float(Config.get("bh", "grav_constant"))
         # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
         # this way numpy can vectorize these operations.
-
         # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
         if self.n >= other_cloud.n:
             c1, c2 = self, other_cloud
         else:
             c1, c2 = other_cloud, self
-
-        c1_acc, c2_acc = guvect_point_to_cloud(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses, G)
         c1.accelerations += c1_acc
         c2.accelerations += np.add.reduce(c2_acc)
+
+    def __apply_force_guvectorize_cpu(self, other_cloud, __is_COM):
+        self.__apply_force_guvectorize_host(other_cloud, __is_COM, guvect_point_to_cloud_cpu)
+
+    def __apply_force_guvectorize_parallel(self, other_cloud, __is_COM):
+        self.__apply_force_guvectorize_host(other_cloud, __is_COM, guvect_point_to_cloud_parallel)
 
     # calculations below (pmende, vect and blas) are from this source:
     # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
