@@ -4,6 +4,9 @@ currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 
+from numba import config, threading_layer
+config.THREADING_LAYER = 'omp'
+
 from barneshut import BarnesHut
 
 fname = sys.argv[1]

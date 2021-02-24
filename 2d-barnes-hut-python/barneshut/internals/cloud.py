@@ -154,7 +154,8 @@ class Cloud:
         #print(f"c1_sliced:\n{c1_sliced}\n")
         c1_acc = c1_sliced.squeeze(axis=1)
         #print(f"c1_acc:\n{c1_acc}\n")
-    
+        #input("Press Enter to continue...")
+
         c1.accelerations += c1_acc
         c2.accelerations += np.add.reduce(c2_acc)   
        
