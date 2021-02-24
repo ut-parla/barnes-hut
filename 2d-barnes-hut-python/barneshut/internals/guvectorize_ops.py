@@ -26,6 +26,7 @@ def guvect_point_to_cloud(p_pos, p_mass, cloud_positions, cloud_masses, G, p_acc
         cloud_accels[i] += (f * dif / cloud_masses[i])
 
 
+# beware, cuda 10.1.x is the latest supported: https://github.com/numba/numba/issues/6607
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (n,d)', nopython=True, target="cuda")
 def guvect_point_to_cloud_v2(p_pos, p_mass, cloud_positions, cloud_masses, G, cloud_accels):
