@@ -44,9 +44,7 @@ class Cloud:
 
         # TODO: this is not the best place/way to do this
         fc = Config.get("general", "force_calculation")
-        if fc == "p2cloud":
-            self.__apply_force = self.__apply_force_particle2cloudloop
-        elif fc == "vect":
+        if fc == "vect":
             self.__apply_force = self.__apply_force_vect
         elif fc == "blas":
             #print("results using blas are not correct. this is simply an upper bound on performance")
@@ -249,7 +247,6 @@ class Cloud:
         self.accelerations        += acc[:self.n,:]
         other_cloud.accelerations += acc[self.n:,:]
 
-    # this is a somewhat naive approach using numpy
     def __apply_force_particle2cloudloop(self, other_cloud):
         # this has totally unnaceptable performance so I didnt fix it
         raise("NYI")
