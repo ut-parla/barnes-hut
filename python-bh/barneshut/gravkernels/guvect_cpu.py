@@ -1,10 +1,29 @@
 import numpy as np
 from numba import guvectorize, float64, int64, njit, cuda, jit
 from math import sqrt
+from functools import partial
 
-# TODO: this won't work with CUDA because it requires only one return value and I can't figure
-# out how to do so. We could return it as the last element of cloud_accels, but then the reduction
-# yields the wrong result.
+# this is what is called from __init__.py
+def get_kernel_function(target):
+    if target == "cpu":
+        return partial(guvect_cpu, guvect_point_to_cloud_cpu)
+    elif target == "parallel":
+        return partial(guvect_cpu, guvect_point_to_cloud_parallel)
+
+
+def guvect_cpu(func, self_cloud, other_cloud, G, is_COM):
+    # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
+    # this way numpy can vectorize these operations.
+    # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
+    if self_cloud.n >= other_cloud.n:
+        c1, c2 = self_cloud, other_cloud
+    else:
+        c1, c2 = other_cloud, self_cloud
+    c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses, G)
+    c1.accelerations += c1_acc
+    c2.accelerations += np.add.reduce(c2_acc)
+
+
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="cpu")
 def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
@@ -25,6 +44,7 @@ def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, p
         p_accel         -= (f * dif / p_mass)
         cloud_accels[i] += (f * dif / cloud_masses[i])
 
+
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="parallel")
 def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
@@ -41,26 +61,3 @@ def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses,
         f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
         p_accel         -= (f * dif / p_mass)
         cloud_accels[i] += (f * dif / cloud_masses[i])
-
-# beware, cuda 11.1.x is the latest supported: https://github.com/numba/numba/issues/6607
-@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:,:]"], 
-             '(d),(), (n,d), (n), () -> (n,d)', nopython=True, target="cuda")
-def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, cloud_accels):
-    # not sure if necessary, there is no documentation on initializing output
-    cloud_accels[:, :] = 0.0
-    n = cloud_positions.shape[0]-1
-    p_i = n
-
-    for i in range(n):
-        x, y = p_pos[0] - cloud_positions[i][0], p_pos[1] - cloud_positions[i][1]
-        
-        dist = sqrt((x*x) + (y*y))
-
-        f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
-        cloud_accels[p_i][0] -= (f * x / p_mass)
-        cloud_accels[p_i][1] -= (f * y / p_mass)
-        
-        cloud_accels[i][0] += (f * x / cloud_masses[i])
-        cloud_accels[i][1] += (f * y / cloud_masses[i])
-
-        
