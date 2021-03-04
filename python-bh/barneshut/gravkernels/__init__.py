@@ -1,11 +1,10 @@
 from barneshut.internals.config import Config
-
 from . import cpu_blas
-from .import cpu_vect
-from .import guvect_cpu
-from .import guvect_cuda
+from . import cpu_vect
+from . import guvect_cpu
+from . import guvect_cuda
 
-fn = None
+fn = None   
 
 def get_kernel():
     global fn

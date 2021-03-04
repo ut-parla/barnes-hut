@@ -8,6 +8,8 @@ from scipy.linalg.blas import zhpr, dspr2, zhpmv
 def get_kernel_function():
     return cpu_blas_kernel
 
+# TODO:  compute self interactions: if self_cloud is other_cloud
+
 def cpu_blas_kernel(self_cloud, other_cloud, G, is_COM):
     # get G, positions and masses of concatenation
     cc = self_cloud.concatenation(other_cloud)        

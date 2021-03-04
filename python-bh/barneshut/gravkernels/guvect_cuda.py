@@ -7,6 +7,7 @@ from math import sqrt
 def get_kernel_function():
     return guvect_cuda
 
+# TODO:  compute self interactions: if self_cloud is other_cloud
 
 def guvect_cuda(self_cloud, other_cloud, G, is_COM):
         # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape

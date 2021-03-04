@@ -7,7 +7,9 @@ from barneshut.gravkernels import get_kernel
 N_DIM = 2
 
 class Cloud:
-
+    # TODO: somehow allocate particles lazily because currently all nodes, even empty ones, have memory allocated.
+    # this causes OOM errors for large # of particle inputs
+    
     def __init__(self, com_particle=None, concatenation=None):
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
