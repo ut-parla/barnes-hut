@@ -86,5 +86,8 @@
         "**/dmypy.json": true,
         "**/.pyre/": true,
         "**/.bh/": true
+    },
+    "files.associations": {
+        "*.cu": "c"
     }
 }

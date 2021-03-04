@@ -40,7 +40,8 @@ class ParlaBarnesHut (BaseBarnesHut):
                                 @spawn(B[i])
                                 def particle_force():
                                     for l1,l2 in pairs:
-                                        l1.apply_force(l2)
+                                        if l1 is not l2:
+                                            l1.apply_force(l2)
                             # Wait for them all
                             await B
 
