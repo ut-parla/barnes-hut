@@ -7,7 +7,6 @@ from math import sqrt
 def get_kernel_function():
     return guvect_cuda
 
-# TODO:  compute self interactions: if self_cloud is other_cloud
 
 def guvect_cuda(self_cloud, other_cloud, G, is_COM):
         # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
@@ -21,7 +20,8 @@ def guvect_cuda(self_cloud, other_cloud, G, is_COM):
         # at the last element of each output matrix.
         # this is why there's this whole slicing magic afterwards
         c2.n += 1
-        accs = guvect_point_to_cloud_cuda(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        is_self_self = 1.0 if c1 is c2 else 0.0
+        accs = guvect_point_to_cloud_cuda(c1.positions, c1.masses, c2.positions, c2.masses, G, is_self_self)
         c2.n -= 1
 
         c2_sliced = accs[:,:-1]
@@ -41,9 +41,9 @@ def guvect_cuda(self_cloud, other_cloud, G, is_COM):
 
 
 # beware, cuda 11.1.x is the latest supported: https://github.com/numba/numba/issues/6607
-@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:,:]"], 
+@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (n,d)', nopython=True, target="cuda")
-def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, cloud_accels):
+def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, cloud_accels):
     # not sure if necessary, there is no documentation on initializing output
     cloud_accels[:, :] = 0.0
     n = cloud_positions.shape[0]-1
@@ -51,14 +51,11 @@ def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, 
 
     for i in range(n):
         x, y = p_pos[0] - cloud_positions[i][0], p_pos[1] - cloud_positions[i][1]
-        
         dist = sqrt((x*x) + (y*y))
-
         f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
         cloud_accels[p_i][0] -= (f * x / p_mass)
         cloud_accels[p_i][1] -= (f * y / p_mass)
         
-        cloud_accels[i][0] += (f * x / cloud_masses[i])
-        cloud_accels[i][1] += (f * y / cloud_masses[i])
-
-        
+        if is_self_self != 0:
+            cloud_accels[i][0] += (f * x / cloud_masses[i])
+            cloud_accels[i][1] += (f * y / cloud_masses[i])

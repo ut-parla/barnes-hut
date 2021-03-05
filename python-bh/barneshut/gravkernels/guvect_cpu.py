@@ -11,8 +11,6 @@ def get_kernel_function(target):
         return partial(guvect_cpu, guvect_point_to_cloud_parallel)
 
 
-# TODO:  compute self interactions: if self_cloud is other_cloud
-
 def guvect_cpu(func, self_cloud, other_cloud, G, is_COM):
     # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
     # this way numpy can vectorize these operations.
@@ -21,14 +19,15 @@ def guvect_cpu(func, self_cloud, other_cloud, G, is_COM):
         c1, c2 = self_cloud, other_cloud
     else:
         c1, c2 = other_cloud, self_cloud
-    c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses, G)
+        is_self_self = 1.0 if c1 is c2 else 0.0
+    c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses, G, is_self_self)
     c1.accelerations += c1_acc
     c2.accelerations += np.add.reduce(c2_acc)
 
 
-@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
+@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:], float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="cpu")
-def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
+def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, p_accel, cloud_accels):
     # AFAIK, the cool part of guvectorize is that if this function is called with a matrix of points
     # instead of a single point, it will be vectorized and possibly accelerated
 
@@ -37,19 +36,19 @@ def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, p
     p_accel[:] = 0.0
 
     n = cloud_positions.shape[0]
-    # TODO: figure out if we can do array calculations here instead of a loop
     for i in range(n):
         dif = p_pos-cloud_positions[i]
         dist = np.sqrt(np.sum(np.square(dif)))
 
         f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
-        p_accel         -= (f * dif / p_mass)
-        cloud_accels[i] += (f * dif / cloud_masses[i])
+        p_accel -= (f * dif / p_mass)
+        if is_self_self != 0:
+            cloud_accels[i] += (f * dif / cloud_masses[i])
 
 
-@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64[:], float64[:,:]"], 
+@guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:], float64[:,:]"], 
              '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="parallel")
-def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses, G, p_accel, cloud_accels):
+def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, p_accel, cloud_accels):
     # not sure if necessary, there is no documentation on initializing output
     cloud_accels[:, :] = 0.0
     p_accel[:] = 0.0
@@ -61,5 +60,6 @@ def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses,
         dist = np.sqrt(np.sum(np.square(dif)))
 
         f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
-        p_accel         -= (f * dif / p_mass)
-        cloud_accels[i] += (f * dif / cloud_masses[i])
+        p_accel -= (f * dif / p_mass)
+        if is_self_self != 0:
+            cloud_accels[i] += (f * dif / cloud_masses[i])

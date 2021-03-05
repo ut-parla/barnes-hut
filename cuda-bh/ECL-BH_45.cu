@@ -173,7 +173,8 @@ void BoundingBoxKernel(const int nnodesd, const int nbodiesd, int* const __restr
       p.w = -1.0f;
       posMassd[k] = p;
       k *= 8;
-      for (i = 0; i < 8; i++) childd[k + i] = -1;
+      for (i = 0; i < 8; i++) 
+        childd[k + i] = -1;
 
       stepd++;
     }
@@ -829,12 +830,15 @@ int main(int argc, char* argv[])
       //eat first int we dont need
       fscanf(read_from_file, "%d ", &nbodies);
       fscanf(read_from_file, "%d ", &nbodies);
-      fprintf(stderr, "found %d while reading file\n", nbodies);
+      fprintf(stderr, "found %d bodies while reading file\n", nbodies);
     }
 
     nnodes = nbodies * 2;
-    if (nnodes < 1024*blocks) nnodes = 1024*blocks;
-    while ((nnodes & (WARPSIZE-1)) != 0) nnodes++;
+    if (nnodes < 1024*blocks) 
+      nnodes = 1024*blocks;
+    // this finds the next multiple of warpsize (32), minus 1. why? idk yet
+    while ((nnodes & (WARPSIZE-1)) != 0) 
+      nnodes++;
     nnodes--;
 
     timesteps = atoi(argv[2]);

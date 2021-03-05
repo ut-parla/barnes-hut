@@ -27,11 +27,13 @@ class SequentialBarnesHut (BaseBarnesHut):
 
                 # time each iteration
                 with Timer.get_handle("iteration"):
+                    # all distinct combinations
                     for l1,l2 in combinations(leaves, 2):
-                        if l1 is not l2:
-                            l1.apply_force(l2)
+                        l1.apply_force(l2)
                     
+                    # all self to self, and tick since no other force will be applied
                     for leaf in leaves:
+                        leaf.apply_force(leaf)
                         leaf.tick()
 
         Timer.reset_and_print()

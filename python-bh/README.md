@@ -3,10 +3,9 @@
 
 ## TODO:
 
-- [ ] Use GPU/Numba
-- [ ] Add cost based partitioning
 - [ ] Improve/parallelize tree building 
-- [ ] Fix multi process implementation
+- [ ] Use median to partition tree top-down
+- [x] Use GPU/Numba
 - [x] Make a tree node hold more than one particle
 - [x] Set print particle positions as optional flag
 - [x] Chunk particles to reduce task-set size. (result: not good, at least for parla)
