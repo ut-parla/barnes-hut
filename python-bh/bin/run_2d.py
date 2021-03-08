@@ -6,13 +6,17 @@ currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 
-# avoid warnings by using OMP
-from numba import config, threading_layer
-config.THREADING_LAYER = 'omp'
-
 # setup logging
 import logging
 logging.basicConfig(level=logging.DEBUG)
+
+# avoid warnings by using OMP
+from numba import config, threading_layer
+config.THREADING_LAYER = 'omp'
+# set numba's logging otherwise it fills the screen
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.WARNING)
+
 
 # import entry point
 from barneshut import BarnesHut

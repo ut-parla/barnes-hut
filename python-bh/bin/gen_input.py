@@ -32,6 +32,7 @@ def main():
     args = parser.parse_args()
 
     distribution = str(args.distribution)
+    print(f"Using distribution {distribution}")
     num_particles = int(args.num_particles)
 
     particles = generateParticles(num_particles, distribution)

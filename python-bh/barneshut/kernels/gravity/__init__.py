@@ -6,7 +6,7 @@ from . import guvect_cuda
 
 fn = None   
 
-def get_kernel():
+def get_gravity_kernel():
     global fn
 
     if fn is None:

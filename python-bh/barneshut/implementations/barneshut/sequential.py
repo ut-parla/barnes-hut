@@ -1,9 +1,8 @@
-from .base import BaseBarnesHut
-from barneshut.internals.config import Config
 import numpy as np
 import logging
 from math import sqrt, pow, ceil
-
+from .base import BaseBarnesHut
+from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
 
 class SequentialBarnesHut (BaseBarnesHut):
@@ -14,10 +13,10 @@ class SequentialBarnesHut (BaseBarnesHut):
         """Our parent will init `self.particles = []` only, we need to do 
         what else we need."""
         super().__init__()
-        self.particles_per_leaf = Config.get("quadtree", "particles_per_leaf")
+        self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
 
-    def __next_perfect_square(n):
+    def __next_perfect_square(self, n):
         if n%n**0.5 != 0:
             return pow( ceil(sqrt(n))  , 2)
         return n
@@ -47,8 +46,24 @@ class SequentialBarnesHut (BaseBarnesHut):
 
         # assert it is a square
         assert (max_x-min_x)==(max_y-min_y)
-
         return (min_x, min_y), (max_x, max_y)
+
+    def __create_grid(self, bottom_left, top_right, grid_dim):
+        # x and y have the same edge length, so get x length
+        step = (top_right[0]-bottom_left[0]) / grid_dim
+        # create grid as a matrix, starting from bottom left
+        self.grid = []
+        logging.debug(f"Grid: {bottom_left}, {top_right}")
+        for i in range(grid_dim):
+            row = []
+            for j in range(grid_dim):
+                x = bottom_left[0] + (i*step)
+                y = bottom_left[1] + (j*step)
+                row.append(Box((x,y), (x+step, y+step)))
+            logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
+            self.grid.append(row)
+
+        
 
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
@@ -67,27 +82,39 @@ class SequentialBarnesHut (BaseBarnesHut):
             nleaves = self.particles_per_leaf
         else:
             n = len(self.particles)
-            nleaves = n / (0.8 * self.particles_per_leaf)
+            nleaves = n / (0.7 * self.particles_per_leaf)
 
         # find next perfect square
-        nleaves = __next_perfect_square(nleaves)
-        grid_dim = sqrt(nleaves)
+        nleaves = self.__next_perfect_square(nleaves)
+        grid_dim = int(sqrt(nleaves))
 
         logging.debug(f'''With 0.8 occupancy, {self.particles_per_leaf} particles per leaf 
                 we need {nleaves} leaves, whose next perfect square is {grid_dim}.
                 Grid will be {grid_dim}x{grid_dim}''')
         
-        # x and y have the same edge length, so get x length
-        step = (top_right[0]-bottom_left[0]) / grid_dim
-        # create grid as a matrix, starting from bottom left
-        self.grid = []
-        for i in range(grid_dim):
-            row = []
-            for j in range(grid_dim):
-                x = bottom_left[0] + (i*step)
-                y = bottom_left[1] + (j*step)
-                row.append(Box((x,y), (x+step, y+step)))
-            self.grid.append(row)
+        self.__create_grid(bottom_left, top_right, grid_dim)
+
+        # TODO: place this in a kernel
+        # TODO: use numpy to do batches
+        bb_x = np.array([bottom_left[0], top_right[0]])
+        # bb_y = np.array([bottom_left[1], top_right[1]])
+        edge_len = bb_x[1] - bb_x[0]
+        step =  edge_len / grid_dim 
+
+        # placements is an array mapping points to their position in the matrix
+        # this is just so we can easily map to numpy/cuda later
+        placements = np.ndarray((len(self.particles), 2))
+        for i, p in enumerate(self.particles):
+            x, y = p.position[0], p.position[1]
+            px, py = x/step, y/step
+            placements[i][0], placements[i][1] = px, py 
+        
+        for i, p in enumerate(placements):
+            # need to get min because of float rounding
+            x = min(int(p[0]), grid_dim-1)
+            y = min(int(p[1]), grid_dim-1)
+            logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
+            self.grid[x][y].add_particle(self.particles[i])
 
         
     def summarize(self):
@@ -101,39 +128,3 @@ class SequentialBarnesHut (BaseBarnesHut):
     def timestep(self):
         """Each implementation must have it's own timestep"""
         raise NotImplementedError()
-
-
-
-
-
-
-    def create_tree(self):
-        self.root_node = BaseNode(self.size, 0, 0)
-        for particle in self.particles:
-            self.root_node.add_particle(particle)
-
-    def summarize(self):
-
-
-
-        Timer.reset_and_print()
-        if print_particles:
-            self.print_particles()
-
-
-
- # TODO: just wanna make this work, we can do this step during construction later
-                leaves = []
-                self.root_node.find_leaves(leaves)
-                print(f"we have {len(leaves)} leaves")
-
-                # time each iteration
-                with Timer.get_handle("iteration"):
-                    # all distinct combinations
-                    for l1,l2 in combinations(leaves, 2):
-                        l1.apply_force(l2)
-                    
-                    # all self to self, and tick since no other force will be applied
-                    for leaf in leaves:
-                        leaf.apply_force(leaf)
-                        leaf.tick()

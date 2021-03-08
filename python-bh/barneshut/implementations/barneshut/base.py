@@ -12,8 +12,6 @@ class BaseBarnesHut:
         see bin/gen_input.py for details.
         """
         with open(filename) as fp:
-            space_side_len = int(fp.readline())
-            self.size = (space_side_len, space_side_len)
             self.n_particles = int(fp.readline())
             # read all lines, one particle per line
             for _ in range(self.n_particles):

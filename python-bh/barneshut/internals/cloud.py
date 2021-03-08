@@ -1,7 +1,7 @@
 from . import Particle
 from .config import Config
 import numpy as np
-from barneshut.gravkernels import get_kernel
+from barneshut.kernels.gravity import get_gravity_kernel
 
 # hopefully it won't be too hard to switch from 2d to 3d
 N_DIM = 2
@@ -39,7 +39,7 @@ class Cloud:
             self.__velocities = np.ndarray((self.max_particles+1, N_DIM))
             self.__accelerations = np.ndarray((self.max_particles+1, N_DIM))
 
-        self.__apply_force = get_kernel()
+        self.__apply_force = get_gravity_kernel()
 
     #
     # general getter/setters

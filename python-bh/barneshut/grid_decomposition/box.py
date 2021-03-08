@@ -10,69 +10,28 @@ class Box:
         self.top_right = top_right        
         self.cloud = Cloud()
 
-    # utility method for classes that inherit us to create their own type children
-    def create_new_node(self, *args):
-        return BaseNode(*args)
-
     def tick(self):
         self.cloud.tick_particles()
 
-    def find_leaves(self, leaves):
-        if self.is_leaf():
-            leaves.append(self)
-        else:
-            for node in self.child_nodes.values():
-                node.find_leaves(leaves)
-
     def add_particle(self, new_particle):
         # if we are leaf and have space, add to our set
-        if self.is_leaf() and not self.cloud.is_full():
-            self.cloud.add_particle(new_particle)
+        if self.cloud.is_full():
+            print("adding to a full leaf, something is wrong")
+        self.cloud.add_particle(new_particle)
 
-        # otherwise add to children:   (leaf, full) or (not leaf, not full)
-        else:
-            # if we don't have children node setup, create them
-            if self.is_leaf():
-                self.create_children()
+    def get_COM(self):
+        return self.cloud.get_COM()
 
-            #if we got here we need to flush all particles to children
-            if not self.cloud.is_empty():
-                for i in range(self.cloud.n):
-                    # TODO: find a better way to do this
-                    p = Particle(self.cloud.positions[i], self.cloud.masses[i], self.cloud.velocities[i])
-                    self.add_particle_to_children(p)
-                self.cloud = Cloud()
-
-            #now add the new one
-            self.add_particle_to_children(new_particle)
-
-    def add_particle_to_children(self, p):
-        for node in self.child_nodes.values():
-            if node.bounds_around(p.position):
-                node.add_particle(p)
-                break
-        else:
-            # Node has fallen out of bounds, so we just eat it
-            print ('Node moved out of bounds')
-
-    # initially other_node is the root
-    def apply_force(self, other_node):
+    def apply_force(self, other_box):
         if self.cloud.is_empty():
             return
-
-        # if empty, just return
-        if other_node.is_leaf():
-            if other_node.cloud.is_empty():
-                return
-            else:
-                use_COM = self.approximation_distance(other_node)
-                self.cloud.apply_force(other_node.cloud, use_COM)
-        #we dont need to recurse since we are interacting leaf to leaf already
+        use_COM = self.approximation_distance(other_box)
+        self.cloud.apply_force(other_box.cloud, use_COM)
 
     # this checks if nodes are neighbors
-    def approximation_distance(self, other_node):
+    def approximation_distance(self, other_box):
         corners1 = self.get_corners()
-        corners2 = other_node.get_corners()
+        corners2 = other_box.get_corners()
 
         # there's gotta be a better way to do this
         for x in corners1[0]:
@@ -97,30 +56,6 @@ class Box:
         return True
 
     def get_corners(self):
-        x1, x2 = self.x, self.x + self.width
-        y1, y2 = self.y, self.y + self.height
+        x1, x2 = self.bottom_left[0], self.top_right[0]
+        y1, y2 = self.bottom_left[1], self.top_right[1]
         return ((x1, x2), (y1, y2))
-
-    def create_children(self):
-        subW = self.width / 2
-        subH = self.height / 2
-        subSize = (subW, subH)
-        x = self.x
-        y = self.y
-        self.child_nodes["nw"] = self.create_new_node(subSize, x, y)
-        self.child_nodes["ne"] = self.create_new_node(subSize, x + subW, y)
-        self.child_nodes["se"] = self.create_new_node(subSize, x + subW, y + subH)
-        self.child_nodes["sw"] = self.create_new_node(subSize, x, y + subH)
-
-    def bounds_around(self, particle):
-        x, y = particle[0:1], particle[1:2]
-        return (x >= self.x
-                and y >= self.y
-                and x < self.x + self.width
-                and y < self.y + self.height)
-
-    def is_leaf(self):
-        return self.child_nodes['ne'] is None
-
-    def __repr__(self):
-        return '<Node x: {}, y:{}, width:{}, height:{}, particle:{}, nodes:{}>'.format(self.x, self.y, self.width, self.height, self.particle, self.nodes)

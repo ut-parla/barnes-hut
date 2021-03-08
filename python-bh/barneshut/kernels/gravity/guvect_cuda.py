@@ -42,7 +42,7 @@ def guvect_cuda(self_cloud, other_cloud, G, is_COM):
 
 # beware, cuda 11.1.x is the latest supported: https://github.com/numba/numba/issues/6607
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:,:]"], 
-             '(d),(), (n,d), (n), () -> (n,d)', nopython=True, target="cuda")
+             '(d),(), (n,d), (n), (), () -> (n,d)', nopython=True, target="cuda")
 def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, cloud_accels):
     # not sure if necessary, there is no documentation on initializing output
     cloud_accels[:, :] = 0.0

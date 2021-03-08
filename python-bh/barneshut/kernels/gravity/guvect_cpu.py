@@ -26,7 +26,7 @@ def guvect_cpu(func, self_cloud, other_cloud, G, is_COM):
 
 
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:], float64[:,:]"], 
-             '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="cpu")
+             '(d),(), (n,d), (n), (), () -> (d), (n,d)', nopython=True, target="cpu", cache=True)
 def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, p_accel, cloud_accels):
     # AFAIK, the cool part of guvectorize is that if this function is called with a matrix of points
     # instead of a single point, it will be vectorized and possibly accelerated
@@ -47,7 +47,7 @@ def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, i
 
 
 @guvectorize(["float64[:], float64, float64[:,:], float64[:], float64, float64, float64[:], float64[:,:]"], 
-             '(d),(), (n,d), (n), () -> (d), (n,d)', nopython=True, target="parallel")
+             '(d),(), (n,d), (n), (), () -> (d), (n,d)', nopython=True, target="parallel", cache=True)
 def guvect_point_to_cloud_parallel(p_pos, p_mass, cloud_positions, cloud_masses, G, is_self_self, p_accel, cloud_accels):
     # not sure if necessary, there is no documentation on initializing output
     cloud_accels[:, :] = 0.0
