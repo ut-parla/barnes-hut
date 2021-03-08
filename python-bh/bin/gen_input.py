@@ -2,7 +2,9 @@
 import argparse
 import random
 
+MIN_PARTICLE_MASS = 0.5
 MAX_PARTICLE_MASS = 5
+DOMAIN_SIZE = 500
 
 class Particle:
     def __init__(self, x, y, mass, xVel, yVel):
@@ -23,34 +25,34 @@ class Particle:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(dest='max_coord', help="Max coord a point will have")
+    parser.add_argument(dest='distribution', help="Need a distribution: normal, gauss or splash2")
     parser.add_argument(dest='num_particles',
                         help="Number of particles to generate")
     parser.add_argument(dest='fout', help="Name of file to write out")
     args = parser.parse_args()
 
-    max_coord = int(args.max_coord)
+    distribution = str(args.distribution)
     num_particles = int(args.num_particles)
 
-    particles = generateParticles(max_coord, num_particles)
+    particles = generateParticles(num_particles, distribution)
 
     with open(args.fout, "w") as fp:
-        fp.write(f"{max_coord}\n")
         fp.write(f"{num_particles}\n")
         for p in particles:
             fp.write(p.to_string())
 
 
-def generateParticles(max_coord, num_particles):
-    w = h = max_coord
+def generateParticles(num_particles, distribution):
+    max_coord = DOMAIN_SIZE-1
     particles = []
 
     for _ in range(num_particles):
-        # x = (self.width - 150) + random.random()*100
-        # y = (self.height - 150) + random.random()*100
-
-        x = random.gauss(w/2, w/12)
-        y = random.gauss(h/2, h/12)
+        if distribution == "normal":
+            x = random.random() * max_coord
+            y = random.random() * max_coord
+        elif distribution == "gauss":
+            x = random.gauss(max_coord/2, max_coord/12)
+            y = random.gauss(max_coord/2, max_coord/12)
 
         xVel = (random.random()-0.5) * 2
         yVel = (random.random()-0.5) * 2
@@ -59,7 +61,7 @@ def generateParticles(max_coord, num_particles):
         # yVel = sun.pos.dist(pos) * math.cos(angle)
 
         # random mass
-        mass = 1+ random.random() * (MAX_PARTICLE_MASS-1)
+        mass = MIN_PARTICLE_MASS + random.random() * (MAX_PARTICLE_MASS-MIN_PARTICLE_MASS)
         particles.append(Particle(x, y, mass, xVel, yVel))
 
     return particles
