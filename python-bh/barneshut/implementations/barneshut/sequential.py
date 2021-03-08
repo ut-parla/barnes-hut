@@ -4,6 +4,7 @@ from math import sqrt, pow, ceil
 from .base import BaseBarnesHut
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
+from itertools import combinations, product
 
 class SequentialBarnesHut (BaseBarnesHut):
     """ Sequential implementation of nbody. Currently not Barnes-hut but
@@ -63,8 +64,6 @@ class SequentialBarnesHut (BaseBarnesHut):
             logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
             self.grid.append(row)
 
-        
-
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -116,15 +115,30 @@ class SequentialBarnesHut (BaseBarnesHut):
             logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
             self.grid[x][y].add_particle(self.particles[i])
 
-        
     def summarize(self):
-        """Each implementation must have it's own summarize"""
-        raise NotImplementedError()
+        n = len(self.grid)
+        for i in range(n):
+            for j in range(n):
+                self.grid[i][j].get_COM()
 
     def evaluate(self):
-        """Each implementation must have it's own evaluate"""
-        raise NotImplementedError()
+        n = len(self.grid)
+        # do all distinct pairs interaction
+        cells = product(range(n), range(n))
+        pairs = combinations(cells, 2)
+
+        for p1, p2 in pairs:
+            l1 = self.grid[p1[0]][p1[1]]
+            l2 = self.grid[p2[0]][p2[1]]
+            l1.apply_force(l2)
+
+        # and all self to self interaction
+        for l in range(n):
+            leaf = self.grid[l][l]
+            leaf.apply_force(leaf)
 
     def timestep(self):
-        """Each implementation must have it's own timestep"""
-        raise NotImplementedError()
+        n = len(self.grid)
+        for i in range(n):
+            for j in range(n):
+                self.grid[i][j].tick()

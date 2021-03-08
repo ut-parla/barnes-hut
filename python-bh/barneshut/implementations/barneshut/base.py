@@ -56,6 +56,8 @@ class BaseBarnesHut:
                 with Timer.get_handle("timestep"):
                     self.timestep()
 
+        Timer.print()
+
     def print_particles(self):
         """Print all particles' coordinates for debugging"""
         for p in self.particles:

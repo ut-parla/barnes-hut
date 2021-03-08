@@ -13,6 +13,7 @@ class Cloud:
     def __init__(self, com_particle=None, concatenation=None):
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
+        self.G = float(Config.get("bh", "grav_constant"))
 
         # If we wanna get a cloud representation of a COM
         if com_particle is not None:
@@ -108,5 +109,5 @@ class Cloud:
         #if use_COM then we don't do all p2p computation, instead we get the COM of the cloud
         other = other_cloud if use_COM is False else other_cloud.get_COM()
         # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
-        self.__apply_force(other, use_COM)
+        self.__apply_force(self, other, self.G, use_COM)
     

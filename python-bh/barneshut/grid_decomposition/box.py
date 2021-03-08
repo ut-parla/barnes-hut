@@ -23,7 +23,7 @@ class Box:
         return self.cloud.get_COM()
 
     def apply_force(self, other_box):
-        if self.cloud.is_empty():
+        if self.cloud.is_empty() or other_box.cloud.is_empty():
             return
         use_COM = self.approximation_distance(other_box)
         self.cloud.apply_force(other_box.cloud, use_COM)
