@@ -1,7 +1,7 @@
 from .barneshut.sequential  import SequentialBarnesHut
 #from .barneshut.processpool import ProcessPoolBarnesHut
 #from .barneshut.asyncio     import AsyncBarnesHut
-from .barneshut.parla       import ParlaBarnesHut
+#from .barneshut.parla       import ParlaBarnesHut
 from barneshut.internals.config import Config
 
 class BarnesHut:
@@ -17,8 +17,8 @@ class BarnesHut:
         #     bh = ProcessPoolBarnesHut()
         # elif impl == "async":
         #     bh = AsyncBarnesHut()
-        elif impl == "parla":
-            bh = ParlaBarnesHut()
+        #elif impl == "parla":
+            #bh = ParlaBarnesHut()
         print(f"Using {impl} implementation")
         self.bh = bh
 
