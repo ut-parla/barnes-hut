@@ -1,10 +1,12 @@
 import numpy as np
+from numpy.lib import recfunctions as rfn
 import logging
 from math import sqrt, pow, ceil
 from .base import BaseBarnesHut
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
 from itertools import combinations, product
+from timer import Timer
 
 LEAF_OCCUPANCY = 0.7
 
@@ -29,31 +31,59 @@ class SequentialBarnesHut (BaseBarnesHut):
         Returns the bottom left and top right corner coordinates, making
         sure that it is a square.
         """
-        # find bounding box; min/max coordinates on each axis
-        max_x, min_x = -1, -1
-        max_y, min_y = -1, -1
-        for p in self.particles:
-            # please dont hate, i just wanna save some lines
-            max_x = p['px'] if p['px'] > max_x or max_x == -1 else max_x
-            min_x = p['px'] if p['px'] < min_x or min_x == -1 else min_x
-            max_y = p['py'] if p['py'] > max_y or max_y == -1 else max_y
-            min_y = p['py'] if p['py'] < min_y or min_y == -1 else min_y
-        assert max_x != -1 and min_x != -1 and max_y != -1 and min_y != -1
+        # https://numpy.org/doc/stable/user/basics.rec.html#indexing-and-assignment-to-structured-arrays
+        parts = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=False)
+        max_x, max_y = np.max(parts, axis=0)[:2]
+        min_x, min_y = np.min(parts, axis=0)[:2]
 
-        # find longer edge and increase the shorter so we have a square
         x_edge, y_edge = max_x - min_x, max_y - min_y 
         if x_edge >= y_edge:
             max_y += (x_edge - y_edge)
         else:
             max_x += (y_edge - x_edge)
 
-        # assert it is a square
         assert (max_x-min_x)==(max_y-min_y)
         return (min_x, min_y), (max_x, max_y)
 
-    def __get_bounding_box_numpy(self):
-        pass
-        #np.max(self.particles     )
+    # def __get_bounding_box_manual(self):
+    #     # find bounding box; min/max coordinates on each axis
+    #     max_x, min_x = -1, -1
+    #     max_y, min_y = -1, -1
+    #     for p in self.particles:
+    #         # please dont hate, i just wanna save some lines
+    #         max_x = p['px'] if p['px'] > max_x or max_x == -1 else max_x
+    #         min_x = p['px'] if p['px'] < min_x or min_x == -1 else min_x
+    #         max_y = p['py'] if p['py'] > max_y or max_y == -1 else max_y
+    #         min_y = p['py'] if p['py'] < min_y or min_y == -1 else min_y
+    #     assert max_x != -1 and min_x != -1 and max_y != -1 and min_y != -1
+
+    #     # find longer edge and increase the shorter so we have a square
+    #     x_edge, y_edge = max_x - min_x, max_y - min_y 
+    #     if x_edge >= y_edge:
+    #         max_y += (x_edge - y_edge)
+    #     else:
+    #         max_x += (y_edge - x_edge)
+
+    #     # assert it is a square
+    #     assert (max_x-min_x)==(max_y-min_y)
+    #     return (min_x, min_y), (max_x, max_y)
+
+    # TODO: we might need a testing framework.
+    # for now, np is much faster:
+    # name, avg, stddev
+    # manual, 4.293787787999463, 0.0
+    # np, 0.14757852000002458, 0.0
+
+    # def test_bb(self):
+    #     with Timer.get_handle("manual"):
+    #         for i in range(1000):
+    #             self.__get_bounding_box_manual()
+    #     with Timer.get_handle("np"):
+    #         for i in range(1000):
+    #             self.__get_bounding_box()
+    #     Timer.print()
+    # def run(self, n_iterations, partitions=None, print_particles=False):
+    #     self.test_bb()
 
     def __create_grid(self, bottom_left, top_right, grid_dim):
         # x and y have the same edge length, so get x length

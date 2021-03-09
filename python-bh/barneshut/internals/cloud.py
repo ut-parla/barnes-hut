@@ -10,6 +10,8 @@ class Cloud:
     # TODO: somehow allocate particles lazily because currently all nodes, even empty ones, have memory allocated.
     # this causes OOM errors for large # of particle inputs
     
+    # TODO: alright, I'm almost sure this is the ugliest constructor I've ever written.
+    # need to change this to factories.   #@staticmethod
     def __init__(self, com_particle=None, concatenation=None):
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
@@ -41,8 +43,6 @@ class Cloud:
             self.__accelerations = np.ndarray((self.max_particles+1, N_DIM))
 
         self.__apply_force = get_gravity_kernel()
-
-    #@staticmethod
 
     #
     # general getter/setters
