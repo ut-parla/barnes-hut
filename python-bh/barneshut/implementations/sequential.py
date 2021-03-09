@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.lib import recfunctions as rfn
 import logging
-from math import sqrt, pow, ceil
+from numpy import sqrt, power, ceil
 from .base import BaseBarnesHut
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
@@ -22,8 +22,8 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.grid = None
 
     def __next_perfect_square(self, n):
-        if n%n**0.5 != 0:
-            return pow( ceil(sqrt(n))  , 2)
+        if n % sqrt(n) != 0:
+            return power(ceil(sqrt(n)), 2)
         return n
 
     def __get_bounding_box(self):
@@ -44,46 +44,6 @@ class SequentialBarnesHut (BaseBarnesHut):
 
         assert (max_x-min_x)==(max_y-min_y)
         return (min_x, min_y), (max_x, max_y)
-
-    # def __get_bounding_box_manual(self):
-    #     # find bounding box; min/max coordinates on each axis
-    #     max_x, min_x = -1, -1
-    #     max_y, min_y = -1, -1
-    #     for p in self.particles:
-    #         # please dont hate, i just wanna save some lines
-    #         max_x = p['px'] if p['px'] > max_x or max_x == -1 else max_x
-    #         min_x = p['px'] if p['px'] < min_x or min_x == -1 else min_x
-    #         max_y = p['py'] if p['py'] > max_y or max_y == -1 else max_y
-    #         min_y = p['py'] if p['py'] < min_y or min_y == -1 else min_y
-    #     assert max_x != -1 and min_x != -1 and max_y != -1 and min_y != -1
-
-    #     # find longer edge and increase the shorter so we have a square
-    #     x_edge, y_edge = max_x - min_x, max_y - min_y 
-    #     if x_edge >= y_edge:
-    #         max_y += (x_edge - y_edge)
-    #     else:
-    #         max_x += (y_edge - x_edge)
-
-    #     # assert it is a square
-    #     assert (max_x-min_x)==(max_y-min_y)
-    #     return (min_x, min_y), (max_x, max_y)
-
-    # TODO: we might need a testing framework.
-    # for now, np is much faster:
-    # name, avg, stddev
-    # manual, 4.293787787999463, 0.0
-    # np, 0.14757852000002458, 0.0
-
-    # def test_bb(self):
-    #     with Timer.get_handle("manual"):
-    #         for i in range(1000):
-    #             self.__get_bounding_box_manual()
-    #     with Timer.get_handle("np"):
-    #         for i in range(1000):
-    #             self.__get_bounding_box()
-    #     Timer.print()
-    # def run(self, n_iterations, partitions=None, print_particles=False):
-    #     self.test_bb()
 
     def __create_grid(self, bottom_left, top_right, grid_dim):
         # x and y have the same edge length, so get x length
@@ -129,31 +89,27 @@ class SequentialBarnesHut (BaseBarnesHut):
         
         self.__create_grid(bottom_left, top_right, grid_dim)
 
-        # TODO: place this in a kernel
-        # TODO: use numpy to do batches
-        bb_x = np.array([bottom_left[0], top_right[0]])
-        # bb_y = np.array([bottom_left[1], top_right[1]])
-        edge_len = bb_x[1] - bb_x[0]
+        # TODO: kernels for this part
+        edge_len = top_right[0] - bottom_left[0]
         step =  edge_len / grid_dim 
 
         # placements is an array mapping points to their position in the matrix
         # this is just so we can easily map to numpy/cuda later
-        placements = np.ndarray((len(self.particles), 2))
-        for i, p in enumerate(self.particles):
-            x, y = p['px'], p['py']
-            px, py = x/step, y/step
-            placements[i][0], placements[i][1] = px, py 
+        placements = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
+        placements /= step
+        # truncate and convert to int
+        placements = np.trunc(placements).astype(int, copy=False)
+        placements = np.clip(placements, 0, grid_dim-1)
         
         # if we need to sort:
         # a = np.array([(1,4,5), (2,1,1), (3,5,1)], dtype='f8, f8, f8')
         #   np.argsort(a, order=('f1', 'f2'))
         # or a.sort(...)
 
-        for i, p in enumerate(placements):
+        for i in range(len(placements)):
             # need to get min because of float rounding
-            x = min(int(p[0]), grid_dim-1)
-            y = min(int(p[1]), grid_dim-1)
-            # logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
+            x, y = placements[i]
+            #logging.debug(f"adding point {i} ({self.particles[i]}) to box {x}/{y}")
             self.grid[x][y].add_particle(self.particles[i])
 
     def summarize(self):
@@ -183,3 +139,48 @@ class SequentialBarnesHut (BaseBarnesHut):
         for i in range(n):
             for j in range(n):
                 self.grid[i][j].tick()
+
+
+    # def __get_bounding_box_manual(self):
+    #     # find bounding box; min/max coordinates on each axis
+    #     max_x, min_x = -1, -1
+    #     max_y, min_y = -1, -1
+    #     for p in self.particles:
+    #         # please dont hate, i just wanna save some lines
+    #         max_x = p['px'] if p['px'] > max_x or max_x == -1 else max_x
+    #         min_x = p['px'] if p['px'] < min_x or min_x == -1 else min_x
+    #         max_y = p['py'] if p['py'] > max_y or max_y == -1 else max_y
+    #         min_y = p['py'] if p['py'] < min_y or min_y == -1 else min_y
+    #     assert max_x != -1 and min_x != -1 and max_y != -1 and min_y != -1
+
+    #     # find longer edge and increase the shorter so we have a square
+    #     x_edge, y_edge = max_x - min_x, max_y - min_y 
+    #     if x_edge >= y_edge:
+    #         max_y += (x_edge - y_edge)
+    #     else:
+    #         max_x += (y_edge - x_edge)
+
+    #     # assert it is a square
+    #     assert (max_x-min_x)==(max_y-min_y)
+    #     return (min_x, min_y), (max_x, max_y)
+
+    # # TODO: we might need a testing framework.
+    # # for now, np is much faster:
+    # # name, avg, stddev
+    # # manual, 4.293787787999463, 0.0
+    # # np, 0.14757852000002458, 0.0
+    # def test_bb(self):
+    #     with Timer.get_handle("manual"):
+    #         for i in range(1000):
+    #             self.__get_bounding_box_manual()
+    #     with Timer.get_handle("np"):
+    #         for i in range(1000):
+    #             self.__get_bounding_box()
+    #     Timer.print()
+    #     m = self.__get_bounding_box_manual()
+    #     n = self.__get_bounding_box()
+    #     print(m)
+    #     print(n)
+
+    # def run(self, n_iterations, partitions=None, print_particles=False):
+    #     self.test_bb()
