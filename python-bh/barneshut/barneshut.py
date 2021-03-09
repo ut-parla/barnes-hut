@@ -1,14 +1,12 @@
-from .barneshut.sequential  import SequentialBarnesHut
-#from .barneshut.processpool import ProcessPoolBarnesHut
-#from .barneshut.asyncio     import AsyncBarnesHut
-#from .barneshut.parla       import ParlaBarnesHut
 from barneshut.internals.config import Config
+from .implementations.sequential import SequentialBarnesHut
 
 class BarnesHut:
 
     def __init__(self, ini_file):
         Config.read_file(ini_file)
         impl = Config.get("general", "implementation", fallback="sequential")
+        print(f"Using {impl} implementation")
 
         bh = None
         if impl == "sequential":
@@ -19,7 +17,7 @@ class BarnesHut:
         #     bh = AsyncBarnesHut()
         #elif impl == "parla":
             #bh = ParlaBarnesHut()
-        print(f"Using {impl} implementation")
+            
         self.bh = bh
 
     def read_input_file(self, file):

@@ -6,6 +6,8 @@ from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
 from itertools import combinations, product
 
+LEAF_OCCUPANCY = 0.7
+
 class SequentialBarnesHut (BaseBarnesHut):
     """ Sequential implementation of nbody. Currently not Barnes-hut but
     a box decomposition."""
@@ -61,7 +63,7 @@ class SequentialBarnesHut (BaseBarnesHut):
                 x = bottom_left[0] + (i*step)
                 y = bottom_left[1] + (j*step)
                 row.append(Box((x,y), (x+step, y+step)))
-            logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
+                logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
             self.grid.append(row)
 
     def create_tree(self):
@@ -81,13 +83,13 @@ class SequentialBarnesHut (BaseBarnesHut):
             nleaves = self.particles_per_leaf
         else:
             n = len(self.particles)
-            nleaves = n / (0.7 * self.particles_per_leaf)
+            nleaves = n / (LEAF_OCCUPANCY * self.particles_per_leaf)
 
         # find next perfect square
         nleaves = self.__next_perfect_square(nleaves)
         grid_dim = int(sqrt(nleaves))
 
-        logging.debug(f'''With 0.8 occupancy, {self.particles_per_leaf} particles per leaf 
+        logging.debug(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
                 we need {nleaves} leaves, whose next perfect square is {grid_dim}.
                 Grid will be {grid_dim}x{grid_dim}''')
         
@@ -108,11 +110,16 @@ class SequentialBarnesHut (BaseBarnesHut):
             px, py = x/step, y/step
             placements[i][0], placements[i][1] = px, py 
         
+        # if we need to sort:
+        # a = np.array([(1,4,5), (2,1,1), (3,5,1)], dtype='f8, f8, f8')
+        #   np.argsort(a, order=('f1', 'f2'))
+        # or a.sort(...)
+
         for i, p in enumerate(placements):
             # need to get min because of float rounding
             x = min(int(p[0]), grid_dim-1)
             y = min(int(p[1]), grid_dim-1)
-            logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
+            # logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
             self.grid[x][y].add_particle(self.particles[i])
 
     def summarize(self):

@@ -1,1 +1,1 @@
-from .implementations import BarnesHut
+from .barneshut import BarnesHut

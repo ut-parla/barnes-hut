@@ -42,6 +42,8 @@ class Cloud:
 
         self.__apply_force = get_gravity_kernel()
 
+    #@staticmethod
+
     #
     # general getter/setters
     #

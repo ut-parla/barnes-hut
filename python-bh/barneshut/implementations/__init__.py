@@ -1,1 +1,1 @@
-from .bh import BarnesHut
+from .barneshut import BarnesHut
