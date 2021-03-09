@@ -1,1 +1,0 @@
-from .barneshut import BarnesHut
