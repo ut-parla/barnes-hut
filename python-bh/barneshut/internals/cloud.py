@@ -19,8 +19,8 @@ class Cloud:
         if com_particle is not None:
             self.n = 1
             # we allocate an extra element because of guvectorize cuda stuff
-            self.__positions = np.array([com_particle.position, (0,0)])
-            self.__masses = np.array([com_particle.mass,0.0])
+            self.__positions = np.array([com_particle[0], (0,0)])
+            self.__masses = np.array([com_particle[1],0.0])
             self.__velocities = np.ndarray((2, N_DIM))
             self.__accelerations = np.ndarray((2, N_DIM))
         # want to concatenate clouds
@@ -81,10 +81,10 @@ class Cloud:
     def is_full(self):
         return self.n >= self.max_particles
 
-    def add_particle(self, part: Particle):
-        self.__positions[self.n] = part.position
-        self.__velocities[self.n] = part.velocity
-        self.__masses[self.n] = part.mass
+    def add_particle(self, p):
+        self.__positions[self.n] = [p['px'], p['py']]
+        self.__velocities[self.n] = [p['vx'], p['vy']]
+        self.__masses[self.n] = p['mass']
         self.__accelerations[self.n] = 0.0
         self.n += 1
 
@@ -98,7 +98,7 @@ class Cloud:
             coords = np.multiply(self.positions, self.masses[:, np.newaxis])
             coords = np.add.reduce(coords)
             coords /= M
-            self.COM = Cloud(com_particle=Particle(coords, M))
+            self.COM = Cloud(com_particle=(coords, M))
         return self.COM
 
     def tick_particles(self):

@@ -1,10 +1,11 @@
-from barneshut.internals.particle import Particle
+import numpy as np
 from timer import Timer
+from barneshut.internals.particle import Particle, particle_type
 
 class BaseBarnesHut:
 
     def __init__(self):
-        self.particles = []
+        self.particles = None
 
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
@@ -13,10 +14,11 @@ class BaseBarnesHut:
         """
         with open(filename) as fp:
             self.n_particles = int(fp.readline())
+            self.particles = np.empty((self.n_particles,), dtype=particle_type)
+
             # read all lines, one particle per line
-            for _ in range(self.n_particles):
-                p = Particle.particle_from_line(fp.readline())
-                self.particles.append(p)
+            for i in range(self.n_particles):
+                self.particles[i] = Particle.particle_from_line(fp.readline())
 
     def create_tree(self):
         """Each implementation must have it's own create_tree"""
@@ -60,5 +62,7 @@ class BaseBarnesHut:
 
     def print_particles(self):
         """Print all particles' coordinates for debugging"""
-        for p in self.particles:
-            print(repr(p))
+        #for p in self.particles:
+        #    print(repr(p))
+        # TODO
+        raise NotImplementedError()

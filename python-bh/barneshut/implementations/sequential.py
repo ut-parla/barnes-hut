@@ -34,10 +34,10 @@ class SequentialBarnesHut (BaseBarnesHut):
         max_y, min_y = -1, -1
         for p in self.particles:
             # please dont hate, i just wanna save some lines
-            max_x = p.position[0] if p.position[0] > max_x or max_x == -1 else max_x
-            min_x = p.position[0] if p.position[0] < min_x or min_x == -1 else min_x
-            max_y = p.position[1] if p.position[1] > max_y or max_y == -1 else max_y
-            min_y = p.position[1] if p.position[1] < min_y or min_y == -1 else min_y
+            max_x = p['px'] if p['px'] > max_x or max_x == -1 else max_x
+            min_x = p['px'] if p['px'] < min_x or min_x == -1 else min_x
+            max_y = p['py'] if p['py'] > max_y or max_y == -1 else max_y
+            min_y = p['py'] if p['py'] < min_y or min_y == -1 else min_y
         assert max_x != -1 and min_x != -1 and max_y != -1 and min_y != -1
 
         # find longer edge and increase the shorter so we have a square
@@ -50,6 +50,10 @@ class SequentialBarnesHut (BaseBarnesHut):
         # assert it is a square
         assert (max_x-min_x)==(max_y-min_y)
         return (min_x, min_y), (max_x, max_y)
+
+    def __get_bounding_box_numpy(self):
+        pass
+        #np.max(self.particles     )
 
     def __create_grid(self, bottom_left, top_right, grid_dim):
         # x and y have the same edge length, so get x length
@@ -106,7 +110,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         # this is just so we can easily map to numpy/cuda later
         placements = np.ndarray((len(self.particles), 2))
         for i, p in enumerate(self.particles):
-            x, y = p.position[0], p.position[1]
+            x, y = p['px'], p['py']
             px, py = x/step, y/step
             placements[i][0], placements[i][1] = px, py 
         

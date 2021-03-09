@@ -1,4 +1,4 @@
-from barneshut.internals import Particle, Cloud
+from barneshut.internals import Cloud
 from barneshut.internals.config import Config
 from collections.abc import Iterable
 import numpy as np
@@ -12,7 +12,6 @@ class BaseNode:
         self.y = y
         self.child_nodes = {"ne": None, "se": None, "sw": None, "nw": None}
         self.cloud = Cloud()
-        # a COM is now a Particle
         self.theta = Config.get("bh", "theta")
 
     # utility method for classes that inherit us to create their own type children
