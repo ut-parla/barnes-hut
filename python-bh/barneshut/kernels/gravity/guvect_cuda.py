@@ -36,7 +36,10 @@ def guvect_cuda(self_cloud, other_cloud, G, is_COM):
         #print(f"c1_acc:\n{c1_acc}\n")
         #input("Press Enter to continue...")
 
-        c1.accelerations += c1_acc
+        if is_self_self:
+            c1.accelerations += c1_acc[:-1]
+        else:
+            c1.accelerations += c1_acc
         c2.accelerations += np.add.reduce(c2_acc)
 
 
