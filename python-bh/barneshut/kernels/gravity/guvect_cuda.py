@@ -8,7 +8,7 @@ def get_kernel_function():
     return guvect_cuda
 
 
-def guvect_cuda(self_cloud, other_cloud, G, is_COM):
+def guvect_cuda(self_cloud, other_cloud, G):
         # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
         if self_cloud.n >= other_cloud.n:
             c1, c2 = self_cloud, other_cloud

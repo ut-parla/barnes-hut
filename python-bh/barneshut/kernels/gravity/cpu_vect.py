@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import norm
+from barneshut.internals import Cloud
 
 # calculations below are from this source:
 # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
@@ -10,9 +11,9 @@ def get_kernel_function():
 
 # TODO:  compute self interactions: if self_cloud is other_cloud
 
-def cpu_vect_kernel(self_cloud, other_cloud, G, is_COM):
+def cpu_vect_kernel(self_cloud, other_cloud, G):
     # get positions and masses of concatenation
-    cc = self_cloud.concatenation(other_cloud)
+    cc = Cloud.concatenation(self_cloud, other_cloud) 
     masses = cc.masses
     positions = cc.positions
 

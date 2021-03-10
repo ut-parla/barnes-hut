@@ -1,79 +1,71 @@
-from . import Particle
-from .config import Config
 import numpy as np
+import logging
+from numpy.lib import recfunctions as rfn
+from .particle import particle_type
+from .config import Config
 from barneshut.kernels.gravity import get_gravity_kernel
 
-# hopefully it won't be too hard to switch from 2d to 3d
-N_DIM = 2
 
 class Cloud:
-    # TODO: somehow allocate particles lazily because currently all nodes, even empty ones, have memory allocated.
-    # this causes OOM errors for large # of particle inputs
     
-    # TODO: alright, I'm almost sure this is the ugliest constructor I've ever written.
-    # need to change this to factories.   #@staticmethod
-    def __init__(self, com_particle=None, concatenation=None):
+    def __init__(self, pre_alloc=None):
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
         self.G = float(Config.get("bh", "grav_constant"))
-
-        # If we wanna get a cloud representation of a COM
-        if com_particle is not None:
-            self.n = 1
-            # we allocate an extra element because of guvectorize cuda stuff
-            self.__positions = np.array([com_particle[0], (0,0)])
-            self.__masses = np.array([com_particle[1],0.0])
-            self.__velocities = np.ndarray((2, N_DIM))
-            self.__accelerations = np.ndarray((2, N_DIM))
-        # want to concatenate clouds
-        elif concatenation is not None:
-            c1, c2 = concatenation
-            self.n = c1.n + c2.n
-            self.__positions = np.concatenate((c1.positions, c2.positions))
-            self.__masses = np.concatenate((c1.masses, c2.masses))
-            self.__velocities = np.ndarray((self.n, N_DIM))
-            self.__accelerations = np.ndarray((self.n, N_DIM))
-        # if this is an empty Cloud creation
+        self.n = 0        
+        if pre_alloc:
+            self.__particles = np.empty((pre_alloc+1,), dtype=particle_type)
         else:
-            self.n = 0
-            # add one to max because of guvectorize cuda stuff
-            self.__positions = np.ndarray((self.max_particles+1, N_DIM))
-            self.__masses = np.ndarray(self.max_particles+1)
-            self.__velocities = np.ndarray((self.max_particles+1, N_DIM))
-            self.__accelerations = np.ndarray((self.max_particles+1, N_DIM))
-
+            self.__particles = None
+        # Set our kernels
         self.__apply_force = get_gravity_kernel()
 
+    #
+    # Factories
+    #
+    @staticmethod
+    def concatenation(cloud1, cloud2):
+        c = Cloud(pre_alloc=cloud1.n + cloud2.n)
+        for p in cloud1.particles:
+            c.add_particle(p)   
+        for p in cloud2.particles:
+            c.add_particle(p)  
+        return c
+        
     #
     # general getter/setters
     #
     @property
-    def positions(self):
-        return self.__positions[:self.n]
+    def particles(self):
+        return self.__particles[:self.n]
 
+    @property
+    def positions(self):
+        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,:2]
+        
     @positions.setter
     def positions(self, pos):
-        self.__positions[:self.n] = pos
+        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,:2] = pos
 
     @property
     def velocities(self):
-        return self.__velocities[:self.n]
+        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,3:5]
 
     @positions.setter
     def velocities(self, v):
-        self.__velocities[:self.n] = v
-
+        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,3:5] = v
+        
     @property
     def masses(self):
-        return self.__masses[:self.n]
+        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,2:3]
     
     @property
     def accelerations(self):
-        return self.__accelerations[:self.n]
+        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,5:7]
 
     @accelerations.setter
     def accelerations(self, acc):
-        self.__accelerations[:self.n] = acc
+        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,5:7] = acc
 
     def is_empty(self):
         return self.n == 0
@@ -81,24 +73,36 @@ class Cloud:
     def is_full(self):
         return self.n >= self.max_particles
 
+    def add_particles(self, ps):
+        for p in ps:
+            self.add_particle(p)
+
     def add_particle(self, p):
-        self.__positions[self.n] = [p['px'], p['py']]
-        self.__velocities[self.n] = [p['vx'], p['vy']]
-        self.__masses[self.n] = p['mass']
-        self.__accelerations[self.n] = 0.0
+        # TODO: maybe add a decorator for this check
+        if self.__particles is None:
+            self.__particles = np.empty((self.max_particles+1,), dtype=particle_type)
+
+        self.__particles[self.n] = p
         self.n += 1
 
-    def concatenation(self, other_cloud):
-        return Cloud(concatenation=(self, other_cloud))
-
     def get_COM(self):
+        # TODO: need a switch here to use different COM kernels
         if self.COM is None:
             # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
             M = np.sum(self.masses)
-            coords = np.multiply(self.positions, self.masses[:, np.newaxis])
+            #print(f"pos {self.positions}")
+            #print(f"masses {self.masses}")
+            coords = np.multiply(self.positions, self.masses)
+            #print(f"after mult {coords}")
             coords = np.add.reduce(coords)
             coords /= M
-            self.COM = Cloud(com_particle=(coords, M))
+            #print(f"coords {coords}")
+            #print(f"mass {M}")
+            self.COM = Cloud(pre_alloc=1)
+            data = (coords[0], coords[1], M, .0, .0, .0, .0)
+            p = np.array(data, dtype=particle_type)
+            self.COM.add_particle(p)
+
         return self.COM
 
     def tick_particles(self):
@@ -107,9 +111,10 @@ class Cloud:
         self.accelerations[:,:] = 0.0               
         self.positions += self.velocities * tick
 
-    def apply_force(self, other_cloud, use_COM=False):
-        #if use_COM then we don't do all p2p computation, instead we get the COM of the cloud
-        other = other_cloud if use_COM is False else other_cloud.get_COM()
-        # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
-        self.__apply_force(self, other, self.G, use_COM)
+    def apply_force(self, other_cloud):
+        self.__apply_force(self, other_cloud, self.G)
+        # #if use_COM then we don't do all p2p computation, instead we get the COM of the cloud
+        # other = other_cloud if use_COM is False else other_cloud.get_COM()
+        # # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
+        # self.__apply_force(self, other, self.G, use_COM)
     

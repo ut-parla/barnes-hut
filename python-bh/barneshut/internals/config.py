@@ -5,7 +5,6 @@ here = Path(__file__).parent
 configs_dir = here / ".." / ".." / "configs"
 
 #it's a start, but it's so ugly...
-
 class Config:
 
     def __init__(self, ini_path=None):

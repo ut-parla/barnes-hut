@@ -11,7 +11,7 @@ def get_kernel_function(target):
         return partial(guvect_cpu, guvect_point_to_cloud_parallel)
 
 
-def guvect_cpu(func, self_cloud, other_cloud, G, is_COM):
+def guvect_cpu(func, self_cloud, other_cloud, G):
     # this is really cool. the signature of this function takes a single point, but we pass multiple points instead
     # this way numpy can vectorize these operations.
     # let's do the biggest set as first parameter, since guvectorize parallelize based on it's shape
