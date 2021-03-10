@@ -88,24 +88,16 @@ class SequentialBarnesHut (BaseBarnesHut):
                 Grid will be {grid_dim}x{grid_dim}''')
         
         self.__create_grid(bottom_left, top_right, grid_dim)
-
-        # TODO: kernels for this part
-        edge_len = top_right[0] - bottom_left[0]
-        step =  edge_len / grid_dim 
+        step =  (top_right[0] - bottom_left[0]) / grid_dim 
 
         # placements is an array mapping points to their position in the matrix
         # this is just so we can easily map to numpy/cuda later
-        placements = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
-        placements /= step
-        # truncate and convert to int
-        placements = np.trunc(placements).astype(int, copy=False)
-        placements = np.clip(placements, 0, grid_dim-1)
-        
-        # if we need to sort:
-        # a = np.array([(1,4,5), (2,1,1), (3,5,1)], dtype='f8, f8, f8')
-        #   np.argsort(a, order=('f1', 'f2'))
-        # or a.sort(...)
+        points = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
 
+        from barneshut.kernels.grid_decomposition.sequential import get_grid_placements_numpy
+
+        placements = get_grid_placements_numpy(points, bottom_left, step, grid_dim)
+        
         for i in range(len(placements)):
             # need to get min because of float rounding
             x, y = placements[i]
