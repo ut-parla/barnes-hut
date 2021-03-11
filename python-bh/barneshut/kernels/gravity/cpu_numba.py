@@ -9,7 +9,7 @@ def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
     if self_cloud == other_cloud:
         posA = self_cloud.positions
         masA = self_cloud.masses
-        acc = numba_self_self(posA, masA, G)
+        acc = self_self_numba(posA, masA, G)
         self_cloud.accelerations  += acc
 
     else:
@@ -20,11 +20,11 @@ def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
         posB = other_cloud.positions
 
         if update_other:
-            acc1, acc2 = numba_self_other_2(posA, posB, masA, masB, G)
+            acc1, acc2 = self_other_numba_2(posA, posB, masA, masB, G)
             self_cloud.accelerations += acc1
             other_cloud.accelerations  += acc2
         else:
-            acc1  = numba_self_other_1(posA, posB, masB, G)
+            acc1  = self_other_numba_1(posA, posB, masB, G)
             self_cloud.accelerations += acc1
 
 @njit("float64[:, :](float64[:, :], float64[:],float64,)", fastmath=True)
