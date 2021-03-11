@@ -46,7 +46,7 @@ def self_self_numba(x, masses, G):
                 field[j, k] -= fk * masses[i]
     return field
 
-@njit("float64[:, :](float64[:, :], float64[:, :], float64[:], float64[:], float64,)", fastmath=True)
+@njit("UniTuple(float64[:, :], 2)(float64[:, :], float64[:, :], float64[:], float64[:], float64,)", fastmath=True)
 def self_other_numba_2(x, y, masA, masB, G):
     field1 = np.zeros_like(x)
     field2 = np.zeros_like(y)
@@ -66,7 +66,7 @@ def self_other_numba_2(x, y, masA, masB, G):
             for k in range(2):
                 fk = G*dx[k]*distSqr**-1 if distSqr > eps else 0
                 field1[j, k] -= fk * masB[i]
-                field2[j, k] += fk * masA[j]
+                field2[i, k] -= fk * masA[j]
     return field1, field2
 
 @njit("float64[:, :](float64[:, :], float64[:, :], float64[:], float64,)", fastmath=True)
