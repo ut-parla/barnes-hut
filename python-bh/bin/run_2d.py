@@ -25,6 +25,7 @@ parser.add_argument('input_file', help="Path to input file")
 parser.add_argument('nrounds', help="Number of rounds to run", type=int)
 parser.add_argument('configfile', help="Path to config file")
 parser.add_argument('--debug', help="Turn debug on", action="store_true")
+parser.add_argument('--check', help="Check accuracy after every round", action="store_true")
 args = parser.parse_args()
 
 fname   = args.input_file
@@ -32,8 +33,9 @@ nrounds = args.nrounds
 cfgfile = args.configfile
 if args.debug:
     logging.basicConfig(level=logging.DEBUG)
+check = args.check
 
 # run the thingy
 bh = BarnesHut(cfgfile)
 bh.read_input_file(fname)
-bh.run(nrounds)
+bh.run(nrounds, check_accuracy=check)

@@ -55,7 +55,8 @@ def __evaluate_com_concat(grid):
                 logging.debug(f"Cell {c} is neighbor, direct interaction")
         
         coms = Box.from_list_of_boxes(com_cells)
-        logging.debug(f"Concatenated COMs have {coms.cloud.n} particles, should have {len(neighbors)}, correct? {coms.cloud.n==len(neighbors)}")
+        logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
+                should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
         boxes.append(coms)
 
         # now we have to do cell <-> box in boxes 
@@ -80,7 +81,8 @@ def __evaluate_com_concat_dedup(grid):
                 com_cells.append(grid[x][y])
                 logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
         coms = Box.from_list_of_boxes(com_cells)
-        logging.debug(f"Concatenated COMs have {coms.cloud.n} particles, should have {len(neighbors)}, correct? {coms.cloud.n==len(neighbors)}")
+        logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
+                should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
         boxes.append(coms)
 
         # remove boxes that already computed their force to us (this function modifies neighbors list)
@@ -94,3 +96,4 @@ def __evaluate_com_concat_dedup(grid):
         self_leaf = grid[x][y]
         for box in boxes:
             self_leaf.apply_force(box)
+

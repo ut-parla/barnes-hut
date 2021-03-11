@@ -82,13 +82,14 @@ class SequentialBarnesHut (BaseBarnesHut):
         points = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
 
         # call kernel to place points
-        placements = self.__grid_placement(points, bottom_left, step, grid_dim)
-        
-        for i in range(len(placements)):
-            # need to get min because of float rounding
-            x, y = placements[i]
-            #logging.debug(f"adding point {i} ({self.particles[i]}) to box {x}/{y}")
-            self.grid[x][y].add_particle(self.particles[i])
+        with Timer.get_handle("placement_kernel"):
+            placements = self.__grid_placement(points, bottom_left, step, grid_dim)
+
+        with Timer.get_handle("grid assign"):
+            for i in range(len(placements)):
+                x, y = placements[i].astype(int, copy=False)
+                logging.debug(f"adding point {i} ({self.particles[i]}) to box {x}/{y}")
+                self.grid[x][y].add_particle(self.particles[i])
 
     def summarize(self):
         n = len(self.grid)

@@ -1,5 +1,8 @@
 from barneshut.internals.config import Config
 
+def nop(*args):
+    pass
+
 fn = None   
 
 def get_gravity_kernel():
@@ -22,5 +25,7 @@ def get_gravity_kernel():
         elif fc == "guvectorize-cuda":
             from . import guvect_cuda
             fn = guvect_cuda.get_kernel_function()
+        elif fc == "nop":
+            fn = nop
 
     return fn

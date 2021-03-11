@@ -29,7 +29,7 @@ def norm(posA, posB):
     posB_norm = np.linalg.norm(posB, ord=2, axis=1)**2
     return posA_norm, posB_norm
 
-def blas_self_self(self_cloud, self_cloud, G):
+def blas_self_self(self_cloud, self_cloud2, G):
     mas = self_cloud.masses 
     pos = self_cloud.positions 
 

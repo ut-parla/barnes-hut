@@ -23,5 +23,5 @@ class BarnesHut:
     def read_input_file(self, file):
         self.bh.read_particles_from_file(file)
 
-    def run(self, iterations=1):
-        self.bh.run(iterations)
+    def run(self, *args, **kwargs):
+        self.bh.run(*args, **kwargs)

@@ -90,14 +90,9 @@ class Cloud:
         if self.COM is None:
             # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
             M = np.sum(self.masses)
-            #print(f"pos {self.positions}")
-            #print(f"masses {self.masses}")
             coords = np.multiply(self.positions, self.masses)
-            #print(f"after mult {coords}")
             coords = np.add.reduce(coords)
             coords /= M
-            #print(f"coords {coords}")
-            #print(f"mass {M}")
             self.COM = Cloud(pre_alloc=1)
             data = (coords[0], coords[1], M, .0, .0, .0, .0)
             p = np.array(data, dtype=particle_type)
