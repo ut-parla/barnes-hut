@@ -7,13 +7,13 @@ def get_kernel_function():
 
 def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
     if self_cloud == other_cloud:
-        posA = self_cloud.positions 
+        posA = self_cloud.positions
         masA = self_cloud.masses
         acc = numba_self_self(posA, masA, G)
         self_cloud.accelerations  += acc
-        
+
     else:
-        masA = self_cloud.masses 
+        masA = self_cloud.masses
         posA = self_cloud.positions
 
         masB = other_cloud.masses
@@ -26,8 +26,8 @@ def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
         else:
             acc1  = numba_self_other_1(posA, posB, masB, G)
             self_cloud.accelerations += acc1
-        
-@njit("float64[:, :](float64[:, :], float64[:],)", fastmath=True)
+
+@njit("float64[:, :](float64[:, :], float64[:],float64,)", fastmath=True)
 def self_self_numba(x, masses, G):
     field = np.zeros_like(x)
     N = x.shape[0]
@@ -89,4 +89,4 @@ def self_other_numba_1(x, y, masB, G):
                 fk = G*dx[k]*distSqr**-1 if distSqr > eps else 0
                 field1[j, k] -= fk * masB[i]
 
-    return field1, field2
+    return field1
