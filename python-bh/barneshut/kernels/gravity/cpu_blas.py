@@ -1,6 +1,7 @@
 import numpy as np
-from scipy.linalg.blas import zhpr, dspr2, zhpmv
+from scipy.linalg.blas import zhpr, dspr2, zhpmv, cgeru, dgemv, cgemv, dger
 from barneshut.internals import Cloud
+from numba import njit, jit, prange
 
 # calculations below are from this source:
 # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
@@ -10,52 +11,90 @@ def get_kernel_function():
     return cpu_blas_kernel
 
 # TODO:  compute self interactions: if self_cloud is other_cloud
-
 def cpu_blas_kernel(self_cloud, other_cloud, G):
-    # get G, positions and masses of concatenation
-    cc = Cloud.concatenation(self_cloud, other_cloud) 
-    mas = cc.masses
-    pos = cc.positions
+    if self_cloud == other_cloud:
+        accel = blas_self_self(self_cloud, self_cloud, G)
+    else:
+        accel = blas_self_other(self_cloud, other_cloud, G)
 
-    n = mas.size
-    # trick: use complex Hermitian to get the packed anti-symmetric
-    # outer difference in the imaginary part of the zhpr answer
-    # don't want to sum over dimensions yet, therefore must do them one-by-one
-    trck = np.zeros((3, n * (n + 1) // 2), complex)
+    return accel 
+
+@njit("UniTuple(complex128[:, :], 2)(float64[:, :], float64[:, :])", fastmath=True)
+def prepare_complex_numba(posA, posB):
+    posA_mod = posA - 1j
+    posB_mod = posB + 1j
+    return posA_mod, posB_mod
+
+def norm(posA, posB):
+    posA_norm = np.linalg.norm(posA, ord=2, axis=1)**2
+    posB_norm = np.linalg.norm(posB, ord=2, axis=1)**2
+    return posA_norm, posB_norm
+
+def blas_self_self(self_cloud, self_cloud, G):
+    mas = self_cloud.masses 
+    pos = self_cloud.positions 
+
+    n = mas.size 
+    trck = np.zeros((2, n * (n + 1) // 2), complex)
     for a, p in zip(trck, pos.T - 1j):
         zhpr(n, -2, p, a, 1, 0, 0, 1)
-        # does  a  ->  a + alpha x x^H
-        # parameters: n             --  matrix dimension
-        #             alpha         --  real scalar
-        #             x             --  complex vector
-        #             ap            --  packed Hermitian n x n matrix a
-        #                               i.e. an n(n+1)/2 vector
-        #             incx          --  x stride
-        #             offx          --  x offset
-        #             lower         --  is storage of ap lower or upper
-        #             overwrite_ap  --  whether to change a inplace
-    # as a by-product we get pos pos^T:
-    ppT = trck.real.sum(0) + 6
-    # now compute matrix of squared distances ...
-    # ... using (A-B)^2 = A^2 + B^2 - 2AB
-    # ... that and the outer sum X (+) X.T equals X ones^T + ones X^T
+
+    ppT = trck.real.sum(0) + 3
+
     dspr2(n, -0.5, ppT[np.r_[0, 2:n+1].cumsum()], np.ones((n,)), ppT,
         1, 0, 1, 0, 0, 1)
-    # does  a  ->  a + alpha x y^T + alpha y x^T    in packed symmetric storage
-    # scale anti-symmetric differences by distance^-3
-    np.divide(trck.imag, ppT*np.sqrt(ppT), where=ppT.astype(bool),
+
+    np.divide(trck.imag, ppT, where=ppT.astype(bool),
             out=trck.imag)
-    # it remains to scale by mass and sum
-    # this can be done by matrix multiplication with the vector of masses ...
-    # ... unfortunately because we need anti-symmetry we need to work
-    # with Hermitian storage, i.e. complex numbers, even though the actual
-    # computation is only real:
+
     out = np.zeros((2, n), complex)
     for a, o in zip(trck, out):
         zhpmv(n, 0.5, a, mas*-1j, 1, 0, 0, o, 1, 0, 0, 1)
-        # multiplies packed Hermitian matrix by vector
     acc = out.real.T
 
     # add accelerations
-    self_cloud.accelerations  += acc[:self_cloud.n,:]
-    other_cloud.accelerations += acc[self_cloud.n:,:]
+    self_cloud.accelerations  += acc
+
+def blas_self_other(self_cloud, other_cloud, G, update_other=False):
+    masA = self_cloud.masses 
+    posA = self_cloud.positions
+    nA = len(masA)
+
+    masB = other_cloud.masses
+    posB = other_cloud.positions
+    nB = len(masB)
+
+    cstore = np.asarray(np.zeros((2, nA, nB)), dtype=np.complex128, order='F')
+    posA_mod, posB_mod = prepare_complex_numba(posA, posB)
+
+    for a, pa, pb in zip(cstore, posA_mod.T, posB_mod.T):
+            a[:]= cgeru(-2.0, pa, pb, overwrite_x=0, overwrite_y=0, a=a, overwrite_a=0)
+
+    D = cstore.real.sum(0) + 3
+
+    posA_norm = np.linalg.norm(posA, ord=2, axis=1)**2
+    posB_norm = np.linalg.norm(posB, ord=2, axis=1)**2
+
+    ones = np.ones((nA), dtype=np.float64, order="F")
+    dger(1.0, posA_norm, ones, overwrite_x=0, overwrite_y=0, a=D, overwrite_a=1)
+
+    ones = np.ones((nB), dtype=np.float64, order="F")
+    dger(1.0, ones, posB_norm, overwrite_x=0, overwrite_y=0, a=D, overwrite_a=1)
+
+    np.divide(cstore.imag, D, where=D.astype(bool), out=cstore.imag)
+
+    #Compute incoming accelerations
+    out = np.zeros((2, nA), dtype=np.float64)
+    for a, o in zip(cstore, out):
+        o[:] = dgemv(0.5, a.imag, masA)
+
+    acc = out.T 
+    self_cloud.accelerations  += acc
+
+    if update_other:
+        #Compute outgoing accelerations
+        out = np.zeros((2, nB), dtype=np.float64)
+        for a, o in zip(cstore, out):
+            o[:] = dgemv(0.5, a.imag, masB)
+        acc = out.T 
+        other_cloud.accelerations  += acc
