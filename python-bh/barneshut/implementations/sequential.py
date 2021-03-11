@@ -105,7 +105,6 @@ class SequentialBarnesHut (BaseBarnesHut):
             for j in range(n):
                 self.grid[i][j].tick()
 
-
     # def __get_bounding_box_manual(self):
     #     # find bounding box; min/max coordinates on each axis
     #     max_x, min_x = -1, -1
