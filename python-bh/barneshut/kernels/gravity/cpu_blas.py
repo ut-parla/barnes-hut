@@ -69,15 +69,15 @@ def blas_self_other(self_cloud, other_cloud, G, update_other=False):
     for a, pa, pb in zip(cstore, posA_mod.T, posB_mod.T):
             a[:]= cgeru(-2.0, pa, pb, overwrite_x=0, overwrite_y=0, a=a, overwrite_a=0)
 
-    D = cstore.real.sum(0) + 3
+    D = cstore.real.sum(0) + 4
 
     posA_norm = np.linalg.norm(posA, ord=2, axis=1)**2
     posB_norm = np.linalg.norm(posB, ord=2, axis=1)**2
 
-    ones = np.ones((nA), dtype=np.float64, order="F")
+    ones = np.ones((nB), dtype=np.float64, order="F")
     dger(1.0, posA_norm, ones, overwrite_x=0, overwrite_y=0, a=D, overwrite_a=1)
 
-    ones = np.ones((nB), dtype=np.float64, order="F")
+    ones = np.ones((nA), dtype=np.float64, order="F")
     dger(1.0, ones, posB_norm, overwrite_x=0, overwrite_y=0, a=D, overwrite_a=1)
 
     np.divide(cstore.imag, D, where=D.astype(bool), out=cstore.imag)
@@ -94,6 +94,18 @@ def blas_self_other(self_cloud, other_cloud, G, update_other=False):
         #Compute outgoing accelerations
         out = np.zeros((2, nB), dtype=np.float64)
         for a, o in zip(cstore, out):
-            o[:] = dgemv(0.5, a.imag, masA)
+            o[:] = dgemv(-0.5, a.imag.T, masA)
         acc = out.T 
         other_cloud.accelerations  += acc
+
+#Alternative rank2-update kernel
+@njit(fastmath=True)
+def rank2_update(A, v, w):
+    n = len(v)
+    m = len(w)
+    for i in range(n):
+        for j in range(m):
+            A[i,j] += v[i] + w[j]
+    return A
+
+#TODO: Add a better numpy self-other version here. The BLAS is slow due to memory and other problems 
