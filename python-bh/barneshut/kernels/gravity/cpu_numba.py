@@ -13,10 +13,10 @@ def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
         self_cloud.accelerations  += acc
 
     else:
-        masA = self_cloud.masses
+        masA = self_cloud.masses.squeeze(axis=1)
         posA = self_cloud.positions
 
-        masB = other_cloud.masses
+        masB = other_cloud.masses.squeeze(axis=1)
         posB = other_cloud.positions
 
         if update_other:
