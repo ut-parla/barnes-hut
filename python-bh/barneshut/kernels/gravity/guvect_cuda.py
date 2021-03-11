@@ -55,7 +55,7 @@ def guvect_point_to_cloud_cuda(p_pos, p_mass, cloud_positions, cloud_masses, G, 
     for i in range(n):
         x, y = p_pos[0] - cloud_positions[i][0], p_pos[1] - cloud_positions[i][1]
         dist = sqrt((x*x) + (y*y))
-        f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
+        f = (G * p_mass * cloud_masses[i]) / (dist*dist)
         cloud_accels[p_i][0] -= (f * x / p_mass)
         cloud_accels[p_i][1] -= (f * y / p_mass)
         

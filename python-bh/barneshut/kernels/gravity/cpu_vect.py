@@ -22,7 +22,7 @@ def cpu_vect_kernel(self_cloud, other_cloud, G):
     disps = positions.reshape((1, -1, 2)) - positions.reshape((-1, 1, 2)) # displacements
     dists = norm(disps, axis=2)
     dists[dists == 0] = 1 # Avoid divide by zero warnings
-    forces = G*disps*mass_matrix/np.expand_dims(dists, 2)**3
+    forces = G*disps*mass_matrix/np.expand_dims(dists, 2)**2
     acc = forces.sum(axis=1)/masses.reshape(-1, 1)
 
     # add accelerations

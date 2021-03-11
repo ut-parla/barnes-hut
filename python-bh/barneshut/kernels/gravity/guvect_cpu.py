@@ -40,7 +40,7 @@ def guvect_point_to_cloud_cpu(p_pos, p_mass, cloud_positions, cloud_masses, G, i
         dif = p_pos-cloud_positions[i]
         dist = np.sqrt(np.sum(np.square(dif)))
 
-        f = (G * p_mass * cloud_masses[i]) / (dist*dist*dist)
+        f = (G * p_mass * cloud_masses[i]) / (dist*dist)
         p_accel -= (f * dif / p_mass)
         if is_self_self != 0:
             cloud_accels[i] += (f * dif / cloud_masses[i])

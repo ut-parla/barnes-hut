@@ -4,8 +4,7 @@ import logging
 from .base import BaseBarnesHut
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
-from barneshut.kernels.helpers import next_perfect_square, get_bounding_box, get_neighbor_cells
-from itertools import combinations, product
+from barneshut.kernels.helpers import next_perfect_square, get_bounding_box
 from timer import Timer
 from numpy import sqrt
 
@@ -22,7 +21,17 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
 
+        # setup functions
+        from barneshut.kernels.grid_decomposition.sequential.grid import get_grid_placement_fn
+        self.__grid_placement = get_grid_placement_fn()
+
+        from barneshut.kernels.grid_decomposition.sequential.evaluation import get_evaluation_fn
+        self.__evaluate = get_evaluation_fn()
+        
     def __create_grid(self, bottom_left, top_right, grid_dim):
+        """Use bounding boxes coordinates, create the grid
+        matrix and their boxes
+        """
         # x and y have the same edge length, so get x length
         step = (top_right[0]-bottom_left[0]) / grid_dim
         # create grid as a matrix, starting from bottom left
@@ -72,10 +81,8 @@ class SequentialBarnesHut (BaseBarnesHut):
         # this is just so we can easily map to numpy/cuda later
         points = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
 
-        # TODO: select kernel from config
-        from barneshut.kernels.grid_decomposition.sequential import get_grid_placements_numpy
-
-        placements = get_grid_placements_numpy(points, bottom_left, step, grid_dim)
+        # call kernel to place points
+        placements = self.__grid_placement(points, bottom_left, step, grid_dim)
         
         for i in range(len(placements)):
             # need to get min because of float rounding
@@ -89,52 +96,8 @@ class SequentialBarnesHut (BaseBarnesHut):
             for j in range(n):
                 self.grid[i][j].get_COM()
 
-    def evaluate_naive(self):
-        n = len(self.grid)
-        # do all distinct pairs interaction
-        cells = product(range(n), range(n))
-        pairs = combinations(cells, 2)
-
-        for p1, p2 in pairs:
-            l1 = self.grid[p1[0]][p1[1]]
-            l2 = self.grid[p2[0]][p2[1]]
-            l1.apply_force(l2)
-
-        # and all self to self interaction
-        for l in range(n):
-            leaf = self.grid[l][l]
-            leaf.apply_force(leaf)
-
     def evaluate(self):
-        n = len(self.grid)
-        # for every box in the grid
-        for cell in product(range(n), range(n)):
-            neighbors = get_neighbor_cells(cell, len(self.grid))
-            all_cells = product(range(n), range(n))
-            
-            boxes = []
-            com_cells = []
-            for c in all_cells:
-                # for cells that are not neighbors, we need to aggregate COMs into a fake Box
-                x,y = c
-                if c not in neighbors:
-                    com_cells.append(self.grid[x][y])
-                    logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
-                # for neighbors, store them so we can do direct interaction
-                else:
-                    boxes.append(self.grid[x][y])
-                    logging.debug(f"Cell {c} is neighbor, direct interaction")
-            
-            coms = Box.from_list_of_boxes(com_cells)
-            logging.debug(f"Concatenated COMs have {coms.cloud.n} particles, should have {len(neighbors)}, correct? {coms.cloud.n==len(neighbors)}")
-            boxes.append(coms)
-
-            # now we have to do cell <-> box in boxes 
-            sx,sy = cell
-            self_leaf = self.grid[x][y]
-
-            for box in boxes:
-                self_leaf.apply_force(box)
+        self.__evaluate(self.grid)
 
     def timestep(self):
         n = len(self.grid)
