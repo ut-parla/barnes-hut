@@ -181,7 +181,11 @@ class PyKokkosBarnesHut(BaseBarnesHut):
 
     def __init__(self):
         super().__init__()
-        pk.set_default_space(pk.Cuda)
+        space: str = Config.get("general", "space")
+        if space == "Cuda":
+            pk.set_default_space(pk.Cuda)
+        else:
+            pk.set_default_space(pk.OpenMP)
         self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
 

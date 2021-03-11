@@ -12,6 +12,8 @@ class BarnesHut:
         bh = None
         if impl == "sequential":
             bh = SequentialBarnesHut()
+        elif impl == "pykokkos":
+            bh = PyKokkosBarnesHut()
         # elif impl == "process":
         #     bh = ProcessPoolBarnesHut()
         # elif impl == "async":
@@ -20,11 +22,9 @@ class BarnesHut:
             #bh = ParlaBarnesHut()
             
         self.bh = bh
-        self.bh_pyk = PyKokkosBarnesHut()
 
     def read_input_file(self, file):
         self.bh.read_particles_from_file(file)
-        self.bh_pyk.read_particles_from_file(file)
 
     def run(self, *args, **kwargs):
         self.bh.run(*args, **kwargs)
