@@ -25,12 +25,6 @@ class BarnesHut:
     def read_input_file(self, file):
         self.bh.read_particles_from_file(file)
         self.bh_pyk.read_particles_from_file(file)
-        # print(self.bh.particles)
-
-        # print(self.bh_pyk.position)
-        # print(self.bh_pyk.mass)
-        # print(self.bh_pyk.velocity)
-
 
     def run(self, *args, **kwargs):
         self.bh.run(*args, **kwargs)

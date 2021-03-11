@@ -17,6 +17,39 @@ LEAF_OCCUPANCY = 0.7
 N_DIM = 2
 
 @pk.functor
+class PyKokkosConcatenatedBox:
+    def __init__(self, box_1, box_2, use_COM):
+        self_box = box_1 if box_1.n > box_2.n else box_2
+        other_box = box_1 if box_1.n < box_2.n else box_2
+
+        self.p_pos: pk.View2D[pk.double] = self_box.position
+        self.p_mass: pk.View1D[pk.double] = self_box.mass
+        self.p_accel: pk.View2D[pk.double] = self_box.acceleration
+        self.cloud_pos: pk.View2D[pk.double] = other_box.COM_position if use_COM else other_box.position
+        self.cloud_mass: pk.View1D[pk.double] = other_box.COM_mass if use_COM else other_box.mass
+        self.cloud_accel: pk.View2D[pk.double] = other_box.COM_acceleration if use_COM else other_box.acceleration
+
+        self.n: int = self.cloud_pos.extent(0)
+        self.G: float = float(Config.get("bh", "grav_constant"))
+        self.is_self_self: int = 1 if box_1 is box_2 else 0
+
+    @pk.workunit
+    def gravity(self, tid: int):
+        for i in range(self.n):
+            dif_1: float = self.p_pos[tid][0] - self.cloud_pos[i][0]
+            dif_2: float = self.p_pos[tid][1] - self.cloud_pos[i][1]
+
+            dist: float = sqrt(((dif_1 * dif_1) + (dif_2 * dif_2)))
+            f: float = (self.G * self.p_mass[tid] * self.cloud_mass[i]) / (dist * dist * dist)
+
+            self.p_accel[tid][0] -= f * dif_1 / self.p_mass[tid]
+            self.p_accel[tid][1] -= f * dif_2 / self.p_mass[tid]
+
+            if self.is_self_self != 0:
+                self.cloud_accel[i][0] += f * dif_1 / self.cloud_mass[i]
+                self.cloud_accel[i][1] += f * dif_2 / self.cloud_mass[i]
+
+@pk.functor
 class PyKokkosBox:
     def __init__(self, bottom_left: Tuple[int, int], top_right: Tuple[int, int]):
         self.bottom_left = bottom_left
@@ -24,16 +57,18 @@ class PyKokkosBox:
         self.n = 0
 
         self.max_particles: int = int(Config.get("quadtree", "particles_per_leaf"))
+        self.tick_parameter: float = float(Config.get("bh", "tick_seconds"))
+
         self.position: pk.View2D[pk.double] = pk.View([self.max_particles, N_DIM], pk.double)
         self.velocity: pk.View2D[pk.double] = pk.View([self.max_particles, N_DIM], pk.double)
         self.mass: pk.View1D[pk.double] = pk.View([self.max_particles], pk.double)
-        self.acceleration: pk.View1D[pk.double] = pk.View([self.max_particles], pk.double)
+        self.acceleration: pk.View2D[pk.double] = pk.View([self.max_particles, N_DIM], pk.double)
 
         self.COM_initialized = False
         self.COM_position: pk.View2D[pk.double] = pk.View([2, N_DIM], pk.double)
         self.COM_velocity: pk.View2D[pk.double] = pk.View([2, N_DIM], pk.double)
         self.COM_mass: pk.View1D[pk.double] = pk.View([2], pk.double)
-        self.COM_acceleration: pk.View1D[pk.double] = pk.View([2], pk.double)
+        self.COM_acceleration: pk.View2D[pk.double] = pk.View([2, N_DIM], pk.double)
 
     def is_empty(self) -> bool:
         return self.n == 0
@@ -45,11 +80,21 @@ class PyKokkosBox:
         if self.is_full():
             print("adding to a full leaf, something is wrong")
 
-        self.position[self.n] = [p["px"], p["py"]]
-        self.velocity[self.n] = [p["vx"], p["vy"]]
+        self.position[self.n][0] = p["px"]
+        self.position[self.n][1] = p["py"]
+        self.velocity[self.n][0] = p["vx"]
+        self.velocity[self.n][1] = p["vy"]
         self.mass[self.n] = p["mass"]
-        self.acceleration[self.n] = 0.0
+        self.acceleration[self.n][0] = 0.0
+        self.acceleration[self.n][1] = 0.0
         self.n += 1
+
+        # TODO: this might work
+        # self.position[self.n] = [p["px"], p["py"]]
+        # self.velocity[self.n] = [p["vx"], p["vy"]]
+        # self.mass[self.n] = p["mass"]
+        # self.acceleration[self.n] = 0.0
+        # self.n += 1
 
     def get_COM(self):
         if not self.COM_initialized:
@@ -58,6 +103,7 @@ class PyKokkosBox:
             x_avg = pk.parallel_reduce(self.n, self.COM_x_kernel) / M
             y_avg = pk.parallel_reduce(self.n, self.COM_y_kernel) / M
             self.init_COM((x_avg, y_avg), M)
+            self.COM_initialized = True
 
     def init_COM(self, coords: Tuple[pk.double, pk.double], M: pk.double):
         self.COM_position[0][0] = coords[0]
@@ -65,6 +111,14 @@ class PyKokkosBox:
         self.COM_position[1][0] = 0
         self.COM_position[1][1] = 0
         self.COM_mass[0] = M
+
+    def get_corners(self):
+        x1, x2 = self.bottom_left[0], self.top_right[0]
+        y1, y2 = self.bottom_left[1], self.top_right[1]
+        return ((x1, x2), (y1, y2))
+
+    def tick(self):
+        pk.parallel_for(self.n, self.tick_kernel)
 
     @pk.workunit
     def COM_mass_kernel(self, tid: int, acc: pk.Acc[pk.double]):
@@ -78,7 +132,7 @@ class PyKokkosBox:
     def COM_y_kernel(self, tid: int, acc: pk.Acc[pk.double]):
         acc += self.position[tid][1] * self.mass[tid]
 
-    def approximation_distance(self, other_box):
+    def approximation_distance(self, other_box) -> bool:
         corners1 = self.get_corners()
         corners2 = other_box.get_corners()
 
@@ -104,11 +158,30 @@ class PyKokkosBox:
 
         return True
 
+    def apply_force(self, other_box) -> None:
+        if self.is_empty() or other_box.is_empty():
+            return
+        use_COM = self.approximation_distance(other_box)
+        other_box.get_COM()
+
+        concatenated = PyKokkosConcatenatedBox(self, other_box, use_COM)
+        pk.parallel_for(concatenated.p_pos.extent(0), concatenated.gravity)
+
+    @pk.workunit
+    def tick_kernel(self, tid: int):
+        self.velocity[tid][0] += self.acceleration[tid][0] * self.tick_parameter
+        self.velocity[tid][1] += self.acceleration[tid][1] * self.tick_parameter
+        self.acceleration[tid][0] = 0
+        self.acceleration[tid][1] = 0
+        self.position[tid][0] += self.velocity[tid][0] * self.tick_parameter
+        self.position[tid][1] += self.velocity[tid][1] * self.tick_parameter
+
 class PyKokkosBarnesHut(BaseBarnesHut):
     """ PyKokkos implementation of nbody."""
 
     def __init__(self):
         super().__init__()
+        pk.set_default_space(pk.Cuda)
         self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
 
@@ -116,7 +189,6 @@ class PyKokkosBarnesHut(BaseBarnesHut):
         """Call the base class method and construct the kernels object"""
 
         super().read_particles_from_file(filename)
-        # self.kernels = PyKokkosBarnesHutKernels(self.particles)
 
     def __next_perfect_square(self, n):
         if n%n**0.5 != 0:
@@ -255,13 +327,13 @@ class PyKokkosBarnesHut(BaseBarnesHut):
                 with Timer.get_handle("summarization"):
                     self.summarize()
 
-                # # Step 3: evaluate.
-                # with Timer.get_handle("evaluation"):
-                #     self.evaluate()
+                # Step 3: evaluate.
+                with Timer.get_handle("evaluation"):
+                    self.evaluate()
 
-                # # Step 4: tick particles using timestep
-                # with Timer.get_handle("timestep"):
-                #     self.timestep()
+                # Step 4: tick particles using timestep
+                with Timer.get_handle("timestep"):
+                    self.timestep()
 
         Timer.print()
 
