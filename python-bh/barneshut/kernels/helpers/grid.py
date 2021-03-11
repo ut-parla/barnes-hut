@@ -38,3 +38,14 @@ def get_neighbor_cells(point, grid_dim):
     #print(f"\n\nneighbors of {point}")
     #for c in cells:
     #    print(c)
+
+def remove_bottom_left_neighbors(point, neighbors):
+    x,y = point
+    pts = [(x-1,y-1), (x-1,y), (x,y-1), (x+1,y-1)]
+    
+    for pt in pts:
+        try:
+            neighbors.remove(pt)
+        except:
+            pass
+    return neighbors
