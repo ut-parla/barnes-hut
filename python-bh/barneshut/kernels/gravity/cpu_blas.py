@@ -11,13 +11,12 @@ def get_kernel_function():
     return cpu_blas_kernel
 
 # TODO:  compute self interactions: if self_cloud is other_cloud
-def cpu_blas_kernel(self_cloud, other_cloud, G):
+def cpu_blas_kernel(self_cloud, other_cloud, G, update_other=False):
     if self_cloud == other_cloud:
-        accel = blas_self_self(self_cloud, self_cloud, G)
+        blas_self_self(self_cloud, self_cloud, G)
     else:
-        accel = blas_self_other(self_cloud, other_cloud, G)
+        blas_self_other(self_cloud, other_cloud, G, update_other)
 
-    return accel 
 
 @njit("UniTuple(complex128[:, :], 2)(float64[:, :], float64[:, :])", fastmath=True)
 def prepare_complex_numba(posA, posB):
@@ -86,7 +85,7 @@ def blas_self_other(self_cloud, other_cloud, G, update_other=False):
     #Compute incoming accelerations
     out = np.zeros((2, nA), dtype=np.float64)
     for a, o in zip(cstore, out):
-        o[:] = dgemv(0.5, a.imag, masA)
+        o[:] = dgemv(0.5, a.imag, masB)
 
     acc = out.T 
     self_cloud.accelerations  += acc
@@ -95,6 +94,6 @@ def blas_self_other(self_cloud, other_cloud, G, update_other=False):
         #Compute outgoing accelerations
         out = np.zeros((2, nB), dtype=np.float64)
         for a, o in zip(cstore, out):
-            o[:] = dgemv(0.5, a.imag, masB)
+            o[:] = dgemv(0.5, a.imag, masA)
         acc = out.T 
         other_cloud.accelerations  += acc
