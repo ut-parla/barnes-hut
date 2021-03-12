@@ -40,6 +40,9 @@ if __name__ == "__main__":
     cfgfile = args.configfile
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.disable(logging.CRITICAL)
+
     check = args.check
 
     run(cfgfile, fname, nrounds, check)
