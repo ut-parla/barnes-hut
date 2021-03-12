@@ -8,7 +8,7 @@ def get_kernel_function():
 def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
     if self_cloud == other_cloud:
         posA = self_cloud.positions
-        masA = self_cloud.masses
+        masA = self_cloud.masses.squeeze(axis=1)
         acc = self_self_numba(posA, masA, G)
         self_cloud.accelerations  += acc
 

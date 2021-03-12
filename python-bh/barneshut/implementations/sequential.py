@@ -98,6 +98,8 @@ class SequentialBarnesHut (BaseBarnesHut):
                 self.grid[i][j].get_COM()
 
     def evaluate(self):
+        # TODO: do i,i evaluations in all kernels
+        # TODO: use the update flag on the kernels to save a lot of computation
         self.__evaluate(self.grid)
 
     def timestep(self):

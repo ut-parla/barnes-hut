@@ -19,8 +19,11 @@ def guvect_cpu(func, self_cloud, other_cloud, G):
         c1, c2 = self_cloud, other_cloud
     else:
         c1, c2 = other_cloud, self_cloud
-        is_self_self = 1.0 if c1 is c2 else 0.0
-    c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses, G, is_self_self)
+    is_self_self = 1.0 if c1 is c2 else 0.0
+
+    print(f"c2 pos {c2.positions.shape}")
+    print(f"c2 masses {c2.masses.shape}")
+    c1_acc, c2_acc = func(c1.positions, c1.masses, c2.positions, c2.masses.squeeze(axis=1), G, is_self_self)
     c1.accelerations += c1_acc
     c2.accelerations += np.add.reduce(c2_acc)
 
