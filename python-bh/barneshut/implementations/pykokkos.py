@@ -1,6 +1,7 @@
 import logging
 from math import sqrt, pow, ceil
 from itertools import combinations, product
+import random
 from typing import Tuple
 
 import numpy as np
@@ -11,8 +12,10 @@ from .base import BaseBarnesHut
 from barneshut.grid_decomposition import Box
 from barneshut.internals.config import Config
 from barneshut.internals.particle import Particle, particle_type
+from barneshut.kernels.helpers import next_perfect_square, get_bounding_box
 from timer import Timer
 
+SAMPLE_SIZE = 10
 LEAF_OCCUPANCY = 0.7
 N_DIM = 2
 
@@ -181,7 +184,7 @@ class PyKokkosBarnesHut(BaseBarnesHut):
 
     def __init__(self):
         super().__init__()
-        space: str = Config.get("general", "space")
+        space: str = Config.get("pykokkos", "space")
         if space == "Cuda":
             pk.set_default_space(pk.Cuda)
         else:
@@ -238,7 +241,8 @@ class PyKokkosBarnesHut(BaseBarnesHut):
         by the box in the grid they belong.
         """
         # get bounding box around all particles
-        bb_min, bb_max = self.__get_bounding_box() 
+        unstr_points = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=False)
+        bb_min, bb_max = get_bounding_box(unstr_points)
         bottom_left = np.array(bb_min)
         top_right = np.array(bb_max)
 
@@ -253,7 +257,7 @@ class PyKokkosBarnesHut(BaseBarnesHut):
             nleaves = n / (LEAF_OCCUPANCY * self.particles_per_leaf)
 
         # find next perfect square
-        nleaves = self.__next_perfect_square(nleaves)
+        nleaves = next_perfect_square(nleaves)
         grid_dim = int(sqrt(nleaves))
 
         logging.debug(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
@@ -261,33 +265,24 @@ class PyKokkosBarnesHut(BaseBarnesHut):
                 Grid will be {grid_dim}x{grid_dim}''')
         
         self.__create_grid(bottom_left, top_right, grid_dim)
-
-        # TODO: place this in a kernel
-        # TODO: use numpy to do batches
-        bb_x = np.array([bottom_left[0], top_right[0]])
-        # bb_y = np.array([bottom_left[1], top_right[1]])
-        edge_len = bb_x[1] - bb_x[0]
-        step =  edge_len / grid_dim 
+        step =  (top_right[0] - bottom_left[0]) / grid_dim
 
         # placements is an array mapping points to their position in the matrix
         # this is just so we can easily map to numpy/cuda later
-        placements = np.ndarray((len(self.particles), 2))
-        for i, p in enumerate(self.particles):
-            x, y = p['px'], p['py']
-            px, py = x/step, y/step
-            placements[i][0], placements[i][1] = px, py 
+        points = rfn.structured_to_unstructured(self.particles[['px', 'py']], copy=True)
 
-        # if we need to sort:
-        # a = np.array([(1,4,5), (2,1,1), (3,5,1)], dtype='f8, f8, f8')
-        #   np.argsort(a, order=('f1', 'f2'))
-        # or a.sort(...)
+        # call kernel to place points
+        with Timer.get_handle("placement_kernel"):
+            points = (points - bottom_left) / step
+            # truncate and convert to int
+            points = np.trunc(points) #.astype(int, copy=False)
+            points = np.clip(points, 0, grid_dim-1)
 
-        for i, p in enumerate(placements):
-            # need to get min because of float rounding
-            x = min(int(p[0]), grid_dim-1)
-            y = min(int(p[1]), grid_dim-1)
-            # logging.debug(f"adding point {i} ({self.particles[i].position}) to box {x}/{y}")
-            self.grid[x][y].add_particle(self.particles[i])
+        with Timer.get_handle("grid assign"):
+            for i in range(len(points)):
+                x, y = points[i].astype(int, copy=False)
+                logging.debug(f"adding point {i} ({self.particles[i]}) to box {x}/{y}")
+                self.grid[x][y].add_particle(self.particles[i])
 
     def summarize(self):
         n = len(self.grid)
@@ -346,9 +341,51 @@ class PyKokkosBarnesHut(BaseBarnesHut):
 
         Timer.print()
 
-    def print_particles(self):
-        """Print all particles' coordinates for debugging"""
-        #for p in self.particles:
-        #    print(repr(p))
-        # TODO
-        raise NotImplementedError()
+    def backup_particles(self):
+        self.backedup_particles = self.particles.copy()
+
+    def check_accuracy(self):
+        """Sample SAMPLE_SIZE points from the pre-computation backed up points,
+        run the n^2 on them and check the difference between it and the actual
+        algorithm ran
+        """
+        import statistics
+        sample = [random.choice(range(self.n_particles)) for _ in range(SAMPLE_SIZE)]
+
+        G = float(Config.get("bh", "grav_constant"))
+        uns = rfn.structured_to_unstructured
+
+        for j in range(self.n_particles):
+            self.backedup_particles[j]['ax'] = 0
+            self.backedup_particles[j]['ay'] = 0
+
+        for i in sample:
+            for j in range(self.n_particles):
+                # skip if same particle
+                if i == j:
+                    continue
+
+                p1_p    = uns(self.backedup_particles[i][['px', 'py']])
+                p1_mass = uns(self.backedup_particles[i][['mass']])
+
+                p2_p    = uns(self.backedup_particles[j][['px', 'py']])
+                p2_mass = uns(self.backedup_particles[j][['mass']])
+
+                dif = p1_p - p2_p
+                dist = np.sqrt(np.sum(np.square(dif)))
+                f = (G * p1_mass * p2_mass) / (dist*dist)
+
+                self.backedup_particles[i]['ax'] -= f * dif[0] / p1_mass
+                self.backedup_particles[i]['ay'] -= f * dif[1] / p1_mass
+
+        cum_err = np.zeros(2)
+        for i in sample:
+            a1 = uns(self.backedup_particles[i][['ax', 'ay']])
+            a2 = uns(self.particles[i][['ax', 'ay']])
+            diff = np.abs(a1 - a2)
+            print(f"diff on point {i}:  {diff}")
+
+            cum_err += diff
+
+        cum_err /= float(SAMPLE_SIZE)
+        print(f"avg error across {SAMPLE_SIZE} points: {cum_err}")
