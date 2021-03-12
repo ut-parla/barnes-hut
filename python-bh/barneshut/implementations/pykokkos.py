@@ -339,6 +339,9 @@ class PyKokkosBarnesHut(BaseBarnesHut):
                 with Timer.get_handle("timestep"):
                     self.timestep()
 
+                if check_accuracy:
+                    self.check_accuracy()
+
         Timer.print()
 
     def backup_particles(self):
