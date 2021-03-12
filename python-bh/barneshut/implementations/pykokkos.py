@@ -317,12 +317,17 @@ class PyKokkosBarnesHut(BaseBarnesHut):
             for j in range(n):
                 self.grid[i][j].tick()
 
-    def run(self, n_iterations, partitions=None, print_particles=False):
+    def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
         overloaded."""
+
         with Timer.get_handle("end-to-end"):
             for _ in range(n_iterations):
+                # If we're checking accuracy, we need to save points before calculation
+                if check_accuracy:
+                    self.backup_particles()
+
                 # Step 1: create tree (if Barnes-Hut), group-by points by box (if Decomposition)
                 with Timer.get_handle("tree-creation"):
                     self.create_tree()
