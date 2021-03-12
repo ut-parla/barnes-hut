@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from numpy.lib import recfunctions as rfn
+from numpy.lib.recfunctions import structured_to_unstructured as unst
 from .particle import particle_type
 from .config import Config
 from barneshut.kernels.gravity import get_gravity_kernel
@@ -41,31 +41,31 @@ class Cloud:
 
     @property
     def positions(self):
-        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,:2]
+        return unst(self.__particles, copy=False)[:self.n,:2]
         
     @positions.setter
     def positions(self, pos):
-        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,:2] = pos
+        unst(self.__particles, copy=False)[:self.n,:2] = pos
 
     @property
     def velocities(self):
-        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,3:5]
+        return unst(self.__particles, copy=False)[:self.n,3:5]
 
     @positions.setter
     def velocities(self, v):
-        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,3:5] = v
+        unst(self.__particles, copy=False)[:self.n,3:5] = v
         
     @property
     def masses(self):
-        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,2:3]
+        return unst(self.__particles, copy=False)[:self.n,2:3]
     
     @property
     def accelerations(self):
-        return rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,5:7]
+        return unst(self.__particles, copy=False)[:self.n,5:7]
 
     @accelerations.setter
     def accelerations(self, acc):
-        rfn.structured_to_unstructured(self.__particles, copy=False)[:self.n,5:7] = acc
+        unst(self.__particles, copy=False)[:self.n,5:7] = acc
 
     def is_empty(self):
         return self.n == 0
@@ -85,6 +85,10 @@ class Cloud:
         self.__particles[self.n] = p
         self.n += 1
 
+    def add_particle_slice(self, pslice):
+        self.__particles = pslice
+        self.n = len(pslice)
+
     def get_COM(self):
         # TODO: need a switch here to use different COM kernels
         if self.COM is None:
@@ -94,7 +98,7 @@ class Cloud:
             coords = np.add.reduce(coords)
             coords /= M
             self.COM = Cloud(pre_alloc=1)
-            data = (coords[0], coords[1], M, .0, .0, .0, .0)
+            data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
             p = np.array(data, dtype=particle_type)
             self.COM.add_particle(p)
 
@@ -108,8 +112,4 @@ class Cloud:
 
     def apply_force(self, other_cloud):
         self.__apply_force(self, other_cloud, self.G)
-        # #if use_COM then we don't do all p2p computation, instead we get the COM of the cloud
-        # other = other_cloud if use_COM is False else other_cloud.get_COM()
-        # # pass use_COM in case the calculation needs to know if other is a COM or a set of particles
-        # self.__apply_force(self, other, self.G, use_COM)
     
