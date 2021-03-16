@@ -77,24 +77,16 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.__create_grid()        
         self.__init_device_arrays()
 
-        print("shape: ", unst(self.particles).shape) 
-
         self.d_particles_sort = cuda.device_array_like(unst(self.particles))
-
-        # alloc one int so we know the biggest box
-        d_max_box = cuda.device_array(1, dtype=np.int)
 
         #call kernel
         blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
         threads = THREADS_PER_BLOCK
         g_place_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.min_xy, self.step,
-                          self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm, d_max_box)
+                          self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)
 
         cuda.synchronize()
 
-        #get biggest box and sabe
-        self.max_box = d_max_box.copy_to_host()[0]
-        
         # Swap so original d_particles is deallocated. dealloc d_grid_box_count
         self.d_particles = self.d_particles_sort
         self.d_grid_box_count = None
@@ -118,8 +110,12 @@ class SingleGPUBarnesHut (BaseBarnesHut):
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
         # the boxes into the x axis, and use the y axis to have more than 1024 threads 
-        blocks = (self.grid_dim*self.grid_dim, )
-        threads = 100
+        
+        yblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
+        blocks = (self.grid_dim*self.grid_dim, yblocks)
+        threads = min(THREADS_PER_BLOCK, self.n_particles)
+
+        logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
 
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
         cuda.synchronize()
