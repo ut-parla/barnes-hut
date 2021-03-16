@@ -122,7 +122,11 @@ def g_summarize(particles, grid_box_cumm, grid_dim, COMs):
     """Write something better. I just want it to work.
     Launch one thread per box in the grid.
     """
-    my_x, my_y = cuda.grid(2)
+    my_x = cuda.blockIdx.x
+    my_ = 
+
+    
+    
     start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
     end = grid_box_cumm[my_x, my_y]
     M = .0
@@ -220,24 +224,31 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     equal to the max # of particles in a box
     """
 
-    my_x = cuda.blockIdx.x
-    my_y = cuda.blockIdx.y
+    my_y = cuda.blockIdx.x
+    my_y = int(my_x / grid_dim)
+    my_x = cuda.blockIdx.x - (my_y*grid_dim)
 
-    start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
-    end = grid_box_cumm[my_x, my_y]
+    tid = cuda.blockIdx.y * cuda.blockDim.y
 
-    if my_x == 0 and my_y == 0:
+    print("grix {}/{}  tid{}".format(my_x, my_y, tid))
 
-        for gx in range(grid_dim): 
-            for gy in range(grid_dim):
-                # self to self
-                if gx == my_x and gy == my_y:
-                    d_self_self_grav(particles, start, end, G)
-                # # neighbors, direct p2p interaction
-                # elif d_is_neighbor(my_x, my_y, gx, gy):
-                #     other_end = grid_box_cumm[gx, gy]
-                #     other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
-                #     d_self_other_grav(particles, start, end, other_start, other_end, G)
-                # # not neighbor, use COM
-                # else:
-                #     d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
+
+
+    # start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
+    # end = grid_box_cumm[my_x, my_y]
+
+    # if my_x == 0 and my_y == 0:
+
+    #     for gx in range(grid_dim): 
+    #         for gy in range(grid_dim):
+    #             # self to self
+    #             if gx == my_x and gy == my_y:
+    #                 d_self_self_grav(particles, start, end, G)
+    #             # # neighbors, direct p2p interaction
+    #             # elif d_is_neighbor(my_x, my_y, gx, gy):
+    #             #     other_end = grid_box_cumm[gx, gy]
+    #             #     other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
+    #             #     d_self_other_grav(particles, start, end, other_start, other_end, G)
+    #             # # not neighbor, use COM
+    #             # else:
+    #             #     d_self_COM_grav(particles, start, end, COMs, gx, gy, G)

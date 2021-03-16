@@ -116,8 +116,9 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         cuda.synchronize()
 
     def evaluate(self):
-        #fix blocks/threads. we need to find maximum particles a box has and use that
-        blocks = (self.grid_dim, self.grid_dim)
+        # because of the limits of a block, we can't do one block per box, so let's spread
+        # the boxes into the x axis, and use the y axis to have more than 1024 threads 
+        blocks = (self.grid_dim*self.grid_dim, )
         threads = 100
 
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
