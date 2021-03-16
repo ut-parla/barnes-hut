@@ -1,6 +1,5 @@
 from barneshut.internals.config import Config
 from .implementations.sequential import SequentialBarnesHut
-from .implementations.pykokkos import PyKokkosBarnesHut
 
 class BarnesHut:
 
@@ -13,9 +12,11 @@ class BarnesHut:
         if impl == "sequential":
             bh = SequentialBarnesHut()
         elif impl == "pykokkos":
+            from .implementations.pykokkos import PyKokkosBarnesHut
             bh = PyKokkosBarnesHut()
-        # elif impl == "process":
-        #     bh = ProcessPoolBarnesHut()
+        elif impl == "singlegpu":
+            from .implementations.singlegpu import SingleGPUBarnesHut
+            bh = SingleGPUBarnesHut()
         # elif impl == "async":
         #     bh = AsyncBarnesHut()
         #elif impl == "parla":
