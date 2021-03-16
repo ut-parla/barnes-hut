@@ -110,6 +110,6 @@ class Cloud:
         self.accelerations[:,:] = 0.0               
         self.positions += self.velocities * tick
 
-    def apply_force(self, other_cloud):
-        self.__apply_force(self, other_cloud, self.G)
+    def apply_force(self, other_cloud, update_other=False):
+        self.__apply_force(self, other_cloud, self.G, update_other)
     

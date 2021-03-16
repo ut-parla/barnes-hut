@@ -10,7 +10,6 @@ from numba import njit, jit, prange
 def get_kernel_function():
     return cpu_blas_kernel
 
-# TODO:  compute self interactions: if self_cloud is other_cloud
 def cpu_blas_kernel(self_cloud, other_cloud, G, update_other=False):
     if self_cloud == other_cloud:
         blas_self_self(self_cloud, self_cloud, G)

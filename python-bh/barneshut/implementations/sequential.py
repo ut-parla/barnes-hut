@@ -7,7 +7,6 @@ from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 from numpy import sqrt
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from timer import Timer
-
 from .base import BaseBarnesHut
 
 LEAF_OCCUPANCY = 0.7
@@ -32,7 +31,7 @@ class SequentialBarnesHut (BaseBarnesHut):
             get_evaluation_fn
         self.__evaluate = get_evaluation_fn()
         
-    def __create_grid(self, bottom_left, top_right, grid_dim):
+    def __alloc_grid(self, bottom_left, top_right, grid_dim):
         """Use bounding boxes coordinates, create the grid
         matrix and their boxes
         """
@@ -50,10 +49,7 @@ class SequentialBarnesHut (BaseBarnesHut):
                 logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
             self.grid.append(row)
 
-    def create_tree(self):
-        """We're not creating an actual tree, just grouping particles 
-        by the box in the grid they belong.
-        """
+    def __create_grid(self):
         # get square bounding box around all particles
         unstr_points = unst(self.particles[['px', 'py']], copy=False)
         bb_min, bb_max = get_bounding_box(unstr_points)
@@ -72,22 +68,31 @@ class SequentialBarnesHut (BaseBarnesHut):
 
         # find next perfect square
         nleaves = next_perfect_square(nleaves)
-        grid_dim = int(sqrt(nleaves))
+        self.grid_dim = int(sqrt(nleaves))
         logging.debug(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
-                we need {nleaves} leaves, whose next perfect square is {grid_dim}.
-                Grid will be {grid_dim}x{grid_dim}''')
+                we need {nleaves} leaves, whose next perfect square is {self.grid_dim}.
+                Grid will be {self.grid_dim}x{self.grid_dim}''')
         
         # create grid matrix
-        self.__create_grid(bottom_left, top_right, grid_dim)
-        step =  (top_right[0] - bottom_left[0]) / grid_dim 
+        self.__alloc_grid(bottom_left, top_right, self.grid_dim)
+        self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
+        self.min_xy = bottom_left
+        
+    def create_tree(self):
+        """We're not creating an actual tree, just grouping particles 
+        by the box in the grid they belong.
+        """
+        self.__create_grid()        
 
         # call kernel to place points
         with Timer.get_handle("placement_kernel"):
-            self.particles = self.__grid_placement(self.particles, bottom_left, step, grid_dim)
+            # grid placements sets gx, gy to their correct place in the grid
+            self.particles = self.__grid_placement(self.particles, self.min_xy, self.step, self.grid_dim)
 
             # sort by grid position
             self.particles.sort(order=('gx', 'gy'), axis=0)
             up = unst(self.particles)
+            # TODO: change from unique to a manual O(n) scan, we can do it
             coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
             coords = coords.astype(int)
             #logging.debug(f"coords: {coords}\nlens: {lens}")
@@ -114,8 +119,6 @@ class SequentialBarnesHut (BaseBarnesHut):
                 self.grid[i][j].get_COM()
 
     def evaluate(self):
-        # TODO: do i,i evaluations in all kernels
-        # TODO: use the update flag on the kernels to save a lot of computation
         self.__evaluate(self.grid)
 
     def timestep(self):

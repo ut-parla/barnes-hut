@@ -39,7 +39,7 @@ def __evaluate_com_concat(grid):
     # for every box in the grid
     for cell in product(range(n), range(n)):
         neighbors = get_neighbor_cells(cell, len(grid))
-        all_cells = product(    range(n), range(n))
+        all_cells = product(range(n), range(n))
         
         boxes = []
         com_cells = []
@@ -54,7 +54,7 @@ def __evaluate_com_concat(grid):
                 boxes.append(grid[x][y])
                 logging.debug(f"Cell {c} is neighbor, direct interaction")
         
-        coms = Box.from_list_of_boxes(com_cells)
+        coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
         logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
                 should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
         boxes.append(coms)
@@ -64,6 +64,10 @@ def __evaluate_com_concat(grid):
         self_leaf = grid[x][y]
         for box in boxes:
             self_leaf.apply_force(box)
+
+        # we also need to interact with ourself
+        self_leaf.apply_force(self_leaf)
+
 
 def __evaluate_com_concat_dedup(grid):
     n = len(grid)
@@ -80,7 +84,7 @@ def __evaluate_com_concat_dedup(grid):
             if c not in neighbors:
                 com_cells.append(grid[x][y])
                 logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
-        coms = Box.from_list_of_boxes(com_cells)
+        coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
         logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
                 should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
         boxes.append(coms)
@@ -97,3 +101,5 @@ def __evaluate_com_concat_dedup(grid):
         for box in boxes:
             self_leaf.apply_force(box)
 
+        # we also need to interact with ourself
+        self_leaf.apply_force(self_leaf)

@@ -28,13 +28,13 @@ def get_grid_placements_numpy(particles, min_xy, step, grid_dim):
     grid_coords = unst(particles, copy=False)[:, 7:9]
     grid_coords = (grid_coords - min_xy) / step
     # clipping makes truncate unnecessary
-    print(f"before clip {grid_coords}")
+    #print(f"before clip {grid_coords}")
     grid_coords = np.trunc(grid_coords)
     grid_coords = np.clip(grid_coords, 0, grid_dim-1)
 
     unst(particles, copy=False)[:, 7:9] = grid_coords
 
-    print(f"parts: {particles}")
+    #print(f"parts: {particles}")
     return particles
 
 
