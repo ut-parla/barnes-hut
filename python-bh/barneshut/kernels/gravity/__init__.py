@@ -37,4 +37,8 @@ def get_gravity_kernel():
         elif fc == "nop":
             fn = nop
 
+        elif fc == "pykokkos":
+            from . import pyk
+            fn = pyk.get_kernel_function()
+
     return fn
