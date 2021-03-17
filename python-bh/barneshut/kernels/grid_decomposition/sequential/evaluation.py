@@ -48,11 +48,11 @@ def __evaluate_com_concat(grid):
             x,y = c
             if c not in neighbors:
                 com_cells.append(grid[x][y])
-                logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
+                #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
             # for neighbors, store them so we can do direct interaction
             else:
                 boxes.append(grid[x][y])
-                logging.debug(f"Cell {c} is neighbor, direct interaction")
+                #logging.debug(f"Cell {c} is neighbor, direct interaction")
         
         coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
         logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
@@ -83,7 +83,7 @@ def __evaluate_com_concat_dedup(grid):
             x,y = c
             if c not in neighbors:
                 com_cells.append(grid[x][y])
-                logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
+                #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
         coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
         logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
                 should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')

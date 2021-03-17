@@ -1,5 +1,4 @@
 import logging
-
 import numpy as np
 from barneshut.grid_decomposition import Box
 from barneshut.internals.config import Config
@@ -21,6 +20,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         super().__init__()
         self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
+        self.particles_argsort = None
 
         # setup functions
         from barneshut.kernels.grid_decomposition.sequential.grid import \
@@ -78,6 +78,15 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
         self.min_xy = bottom_left
         
+    def get_particles(self, sample_indices=None):
+        if sample_indices is None:
+            return self.particles
+        else:
+            samples = {}
+            for i in sample_indices:
+                samples[i] = self.particles[i].copy()
+            return samples
+
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -89,13 +98,17 @@ class SequentialBarnesHut (BaseBarnesHut):
             # grid placements sets gx, gy to their correct place in the grid
             self.particles = self.__grid_placement(self.particles, self.min_xy, self.step, self.grid_dim)
 
+            # if we are checking accuracy, we need to save how we sorted particles.
+            # performance doesn't matter, so do the easy way
+            if self.checking_accuracy:
+                self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
+
             # sort by grid position
             self.particles.sort(order=('gx', 'gy'), axis=0)
             up = unst(self.particles)
             # TODO: change from unique to a manual O(n) scan, we can do it
             coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
             coords = coords.astype(int)
-            #logging.debug(f"coords: {coords}\nlens: {lens}")
             ncoords = len(coords)
             added = 0
 
@@ -120,6 +133,11 @@ class SequentialBarnesHut (BaseBarnesHut):
 
     def evaluate(self):
         self.__evaluate(self.grid)
+
+        # if checking accuracy, unsort the particles
+        if self.checking_accuracy:
+            self.particles = self.particles[self.particles_argsort]
+            self.particles_argsort = None
 
     def timestep(self):
         n = len(self.grid)

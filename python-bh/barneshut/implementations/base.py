@@ -1,6 +1,7 @@
 import numpy as np
-from numpy.lib import recfunctions as rfn
+from numpy.lib.recfunctions import structured_to_unstructured as uns
 import random
+import logging
 from timer import Timer
 from barneshut.internals.particle import Particle, particle_type
 from barneshut.internals import Config
@@ -12,7 +13,8 @@ class BaseBarnesHut:
     def __init__(self):
         self.particles = None
         self.n_particles = None
-        self.backedup_particles = None
+        # Implementaitons might check this flag to do specific things
+        self.checking_accuracy = False
 
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
@@ -47,12 +49,17 @@ class BaseBarnesHut:
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
         overloaded."""
+        self.checking_accuracy = check_accuracy
 
+        if self.checking_accuracy:
+            sample_indices = self.generate_sample_indices()
+        
         with Timer.get_handle("end-to-end"):
             for _ in range(n_iterations):
-                # If we're checking accuracy, we need to save points before calculation
-                if check_accuracy:
-                    self.backup_particles()
+                # If we're checking accuracy, we need to tell the implementation
+                # and also get the particles before they are modified
+                if self.checking_accuracy:
+                    nsquared_sample = self.preround_accuracy_check(sample_indices)
 
                 # Step 1: create tree (if Barnes-Hut), group-by points by box (if Decomposition)
                 with Timer.get_handle("tree-creation"):
@@ -70,8 +77,10 @@ class BaseBarnesHut:
                 with Timer.get_handle("timestep"):
                     self.timestep()
 
-                if check_accuracy:
-                    self.check_accuracy()
+                # At this point the implementation executed the algorithm, so we
+                # get the results and compare to ours
+                if self.checking_accuracy:
+                    self.check_accuracy(sample_indices, nsquared_sample)
 
         Timer.print()
 
@@ -82,50 +91,78 @@ class BaseBarnesHut:
         # TODO
         raise NotImplementedError()
 
-    def backup_particles(self):
-        self.backedup_particles = self.particles.copy()
-
-    def check_accuracy(self):
-        """Sample SAMPLE_SIZE points from the pre-computation backed up points,
-        run the n^2 on them and check the difference between it and the actual
-        algorithm ran
+    def get_particles(self, sample_indices=None):
+        """ Implementations that want correctness check MUST override
+        this method. Must return the list of particles in the same
+        original order it started.
+        If sample_indices is None, return all particles.
+        Else return a dict with {sample_index: particle, ...}.
+        For example, the sequential implementation modifies the
+        array in place, so it must unsort the array before returning.
+        Doesn't need to be a copy, can be a slice/reference.
         """
-        import statistics
-        sample = [random.choice(range(self.n_particles)) for _ in range(SAMPLE_SIZE)]
+        raise NotImplementedError()
+
+    def generate_sample_indices(self):
+        # fixed seed just so we keep this equal across runs
+        random.seed(0)
+        samples = random.sample(range(self.n_particles), SAMPLE_SIZE)
+        logging.debug(f"acc_check: sample is {samples}")
+        return samples
+
+    def preround_accuracy_check(self, sample_indices):
+        """ Get the original particles, run the n^2 algorithm
+        for a sample and store the results.
+        After the implementation runs, we compare.
+        """
+        particles = self.get_particles()
+        samples = {}
+
+        logging.debug(f"particles prerond: {particles}")
+
+        # copy sampled particles so we can modify them
+        for i in sample_indices:
+            samples[i] = particles[i].copy()
+            samples[i]['ax'] = 0
+            samples[i]['ay'] = 0
 
         G = float(Config.get("bh", "grav_constant"))
-        uns = rfn.structured_to_unstructured
-
-        for j in range(self.n_particles):
-            self.backedup_particles[j]['ax'] = 0
-            self.backedup_particles[j]['ay'] = 0
-
-        for i in sample:
-            for j in range(self.n_particles):
-                # skip if same particle
+        # for each particle, do the n^2 algorithm
+        for i in sample_indices:
+            for j in range(len(particles)):
+                # skip self to self
                 if i == j:
                     continue
-                
-                p1_p    = uns(self.backedup_particles[i][['px', 'py']])
-                p1_mass = uns(self.backedup_particles[i][['mass']])
-
-                p2_p    = uns(self.backedup_particles[j][['px', 'py']])
-                p2_mass = uns(self.backedup_particles[j][['mass']])
-
+                p1_p    = uns(samples[i][['px', 'py']])
+                p1_mass = uns(samples[i][['mass']])
+                p2_p    = uns(particles[j][['px', 'py']])
+                p2_mass = uns(particles[j][['mass']])
                 dif = p1_p - p2_p
                 dist = np.sqrt(np.sum(np.square(dif)))
                 f = (G * p1_mass * p2_mass) / (dist*dist)
 
-                self.backedup_particles[i]['ax'] -= f * dif[0] / p1_mass
-                self.backedup_particles[i]['ay'] -= f * dif[1] / p1_mass
+                samples[i]['ax'] -= f * dif[0] / p1_mass
+                samples[i]['ay'] -= f * dif[1] / p1_mass
 
+            logging.debug(f"n^2 algo for particle {i}: {samples[i]['ax']}/{samples[i]['ay']}")
+
+        return samples
+
+    def check_accuracy(self, sample_indices, nsquared_sample):
+        """Sample SAMPLE_SIZE points from the pre-computation backed up points,
+        run the n^2 on them and check the difference between it and the actual
+        algorithm ran
+        """
+        impl_sample = self.get_particles(sample_indices)
         cum_err = np.zeros(2)
-        for i in sample:
-            a1 = uns(self.backedup_particles[i][['ax', 'ay']])
-            a2 = uns(self.particles[i][['ax', 'ay']])
+        for i in sample_indices:
+            a1 = uns(nsquared_sample[i][['ax', 'ay']])
+            a2 = uns(impl_sample[i][['ax', 'ay']])
+            
+            print(f"n^2: {a1}   impl:  {a2}")
+
             diff = np.abs(a1 - a2)
             print(f"diff on point {i}:  {diff}")
-            
             cum_err += diff
 
         cum_err /= float(SAMPLE_SIZE)

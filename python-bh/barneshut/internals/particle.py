@@ -9,5 +9,5 @@ class Particle:
 
     @staticmethod
     def particle_from_line(line):
-        fields = [float(x) for x in line.split(",")] + [0]*4   #we need 4 fields (acc,gridpos), so *4
+        fields = [float(x) for x in line.split(",")] + [.0]*4   #we need 4 fields (acc,gridpos), so *4
         return np.array(tuple(fields), dtype=particle_type)
