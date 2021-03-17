@@ -6,8 +6,6 @@ def get_kernel_function():
     return cpu_numba_kernel
 
 def cpu_numba_kernel(self_cloud, other_cloud, G, update_other=False):
-    print("in here")
-
     if self_cloud == other_cloud:
         posA = self_cloud.positions
         masA = self_cloud.masses.squeeze(axis=1)

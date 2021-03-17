@@ -63,6 +63,9 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.min_xy = bottom_left
         
     def __init_device_arrays(self):
+        """ Allocate arrays on the device and copy the particles
+        array too. This is done only once.
+        """
         if not self.device_arrays_initd:
             # alloc gpu arrays
             self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
@@ -119,6 +122,19 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
         cuda.synchronize()
+
+        # if checking accuracy, we need to copy it back to host
+        if self.checking_accuracy:
+            self.d_particles.copy_to_host(unst(self.particles))
+
+    def get_particles(self, sample_indices=None):
+        if sample_indices is None:
+            return self.particles
+        else:
+            samples = {}
+            for i in sample_indices:
+                samples[i] = self.particles[i].copy()
+            return samples
 
     def timestep(self):
        pass
