@@ -9,7 +9,7 @@ def get_gravity_kernel():
     global fn
 
     if fn is None:
-        fc = Config.get("general", "force_calculation")
+        fc = Config.get("sequential", "force_calculation")
         if fc == "vect":
             from . import cpu_vect
             fn = cpu_vect.get_kernel_function()
