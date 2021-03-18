@@ -17,8 +17,9 @@ class BarnesHut:
         elif impl == "singlegpu":
             from .implementations.singlegpu import SingleGPUBarnesHut
             bh = SingleGPUBarnesHut()
-        # elif impl == "async":
-        #     bh = AsyncBarnesHut()
+        elif impl == "multigpu":
+            from .implementations.multigpu import MultiGPUBarnesHut
+            bh = MultiGPUBarnesHut()
         #elif impl == "parla":
             #bh = ParlaBarnesHut()
             
