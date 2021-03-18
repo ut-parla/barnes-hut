@@ -45,21 +45,64 @@ class GravitySelfSelfFunctor:
             self.field[i][1] += fk_1 * self.masses[j]
             self.field[j][1] -= fk_1 * self.masses[i]
 
-@pk.functor(
-    p_pos=pk.ViewTypeInfo(trait=pk.Unmanaged),
-    cloud_pos=pk.ViewTypeInfo(trait=pk.Unmanaged),
-    cloud_mass=pk.ViewTypeInfo(trait=pk.Unmanaged)
-)
-class GravitySelfOtherFunctor:
+@pk.functor
+class GravitySelfOther1Functor:
     def __init__(self, c1_positions, c2_positions, c2_masses, G):
-        c1_positions = np.array(c1_positions, copy=True)
+        p_pos = np.array(c1_positions, copy=True)
         c2_positions = np.array(c2_positions, copy=True)
         c2_masses = np.array(c2_masses, copy=True)
 
-        self.p_pos: pk.View2D[pk.double] = pk.from_numpy(c1_positions)
+        self.p_pos: pk.View2D[pk.double] = pk.View(list(p_pos.shape), pk.double)
+        self.p_pos.data[:] = p_pos[:]
         self.p_accel: pk.View2D[pk.double] = pk.View(self.p_pos.shape, pk.double)
+        self.p_accel.fill(0)
+        self.cloud_pos: pk.View2D[pk.double] = pk.View(list(c2_positions.shape), pk.double)
+        self.cloud_pos.data[:] = c2_positions[:]
+        self.cloud_mass: pk.View1D[pk.double] = pk.View(list(c2_masses.shape), pk.double)
+        self.cloud_mass.data[:] = c2_masses[:]
+
+        self.n: int = self.cloud_pos.extent(0)
+        self.G: float = G
+        self.eps: float = 1e-5
+
+
+    @pk.workunit
+    def run(self, tid: int):
+        for i in range(self.n):
+            dif_1: float = self.p_pos[tid][0] - self.cloud_pos[i][0]
+            dif_2: float = self.p_pos[tid][1] - self.cloud_pos[i][1]
+
+            dist: float = (dif_1 * dif_1) + (dif_2 * dif_2)
+            f_1: float = 0
+            f_2: float = 0
+            if dist > self.eps:
+                dist_reciprocal: float = 1 / dist
+                f_1 = self.G * dif_1 * dist_reciprocal
+                f_2 = self.G * dif_2 * dist_reciprocal
+
+            self.p_accel[tid][0] -= f_1 * self.cloud_mass[i]
+            self.p_accel[tid][1] -= f_2 * self.cloud_mass[i]
+
+@pk.functor(
+    # p_pos=pk.ViewTypeInfo(trait=pk.Unmanaged),
+    p_mass=pk.ViewTypeInfo(trait=pk.Unmanaged),
+    cloud_pos=pk.ViewTypeInfo(trait=pk.Unmanaged),
+    cloud_mass=pk.ViewTypeInfo(trait=pk.Unmanaged)
+)
+class GravitySelfOther2Functor:
+    def __init__(self, c1_positions, c2_positions, c1_masses, c2_masses, G):
+        p_pos = np.array(c1_positions, copy=True)
+        c2_positions = np.array(c2_positions, copy=True)
+        c1_masses = np.array(c1_masses, copy=True)
+        c2_masses = np.array(c2_masses, copy=True)
+
+        self.p_pos: pk.View2D[pk.double] = pk.View(list(p_pos.shape), pk.double)
+        self.p_pos.data[:] = p_pos[:]
+        self.p_mass: pk.View1D[pk.double] = pk.from_numpy(c1_masses)
+        self.field1: pk.View2D[pk.double] = pk.View(self.p_pos.shape, pk.double)
         self.cloud_pos: pk.View2D[pk.double] = pk.from_numpy(c2_positions)
         self.cloud_mass: pk.View1D[pk.double] = pk.from_numpy(c2_masses)
+        self.field2: pk.View2D[pk.double] = pk.View(self.cloud_pos.shape, pk.double)
 
         self.n: int = self.cloud_pos.extent(0)
         self.G: float = G
@@ -79,12 +122,14 @@ class GravitySelfOtherFunctor:
                 f_1 = self.G * dif_1 * dist_reciprocal
                 f_2 = self.G * dif_2 * dist_reciprocal
 
-            self.p_accel[tid][0] -= f_1 * self.cloud_mass[i]
-            self.p_accel[tid][1] -= f_2 * self.cloud_mass[i]
+            self.field1[tid][0] -= f_1 * self.cloud_mass[i]
+            self.field1[tid][1] -= f_2 * self.cloud_mass[i]
+            self.field2[i][0] -= f_1 * self.p_mass[tid]
+            self.field2[i][1] -= f_2 * self.p_mass[tid]
 
 
 def pyk_run(self_cloud, other_cloud, G, update_other):
-    if self_cloud == other_cloud:
+    if False: # handled by GravitySelfOther1
         posA = self_cloud.positions
         masA = self_cloud.masses.squeeze(axis=1)
     
@@ -102,11 +147,16 @@ def pyk_run(self_cloud, other_cloud, G, update_other):
         posB = other_cloud.positions
 
         if update_other:
-            pass
+            f = GravitySelfOther2Functor(posA, posB, masA, masB, G)
+            N = posA.shape[0]
+            pk.parallel_for(N, f.run)
+
+            self_cloud.accelerations += f.field1.data
+            other_cloud.accelerations += f.field2.data
 
         else:
-            f = GravitySelfOtherFunctor(posA, posB, masB, G)
-            N = self_cloud.positions.shape[0]
+            f = GravitySelfOther1Functor(posA, posB, masB, G)
+            N = posA.shape[0]
             pk.parallel_for(N, f.run)
 
             self_cloud.accelerations += f.p_accel.data
