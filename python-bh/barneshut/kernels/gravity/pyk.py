@@ -129,6 +129,12 @@ class GravitySelfOther2Functor:
 
 
 def pyk_run(self_cloud, other_cloud, G, update_other):
+    exec_space = Config.get("pykokkos", "space", fallback="OpenMP")
+    exec_space = pk.ExecutionSpace[exec_space]
+    pk.set_default_space(exec_space)
+    if exec_space is pk.Cuda and not update_other:
+        print("enabled")
+        pk.enable_uvm()
     if False: # handled by GravitySelfOther1
         posA = self_cloud.positions
         masA = self_cloud.masses.squeeze(axis=1)
@@ -146,9 +152,10 @@ def pyk_run(self_cloud, other_cloud, G, update_other):
         masB = other_cloud.masses.squeeze(axis=1)
         posB = other_cloud.positions
 
+        N = posA.shape[0]
+
         if update_other:
             f = GravitySelfOther2Functor(posA, posB, masA, masB, G)
-            N = posA.shape[0]
             pk.parallel_for(N, f.run)
 
             self_cloud.accelerations += f.field1.data
@@ -156,7 +163,6 @@ def pyk_run(self_cloud, other_cloud, G, update_other):
 
         else:
             f = GravitySelfOther1Functor(posA, posB, masB, G)
-            N = posA.shape[0]
             pk.parallel_for(N, f.run)
 
             self_cloud.accelerations += f.p_accel.data
