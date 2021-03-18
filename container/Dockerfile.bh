@@ -1,9 +1,14 @@
 FROM nvidia/cuda:11.1.1-runtime
 
 RUN apt update
-#RUN apt install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+RUN apt install -y apt-utils dialog
+RUN apt install -y wget git zsh build-essential
 
-ADD ../ ./2d-bh
+RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.1.1/zsh-in-docker.sh)" -- \
+    -t agnoster
 
+WORKDIR /root/
+ADD Makefile .
+RUN make docker
 
-CMD ["bash"]
+CMD ["zsh"]

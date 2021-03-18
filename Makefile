@@ -1,3 +1,5 @@
+.PHONY: all docker
+
 all:
 	sudo apt install -y python3.7 python3.7-dev python3.7-venv
 	. .bh/bin/activate && pip install wheel && pip install -r requirements.txt
@@ -15,3 +17,13 @@ all:
 	@echo   export PATH="${PATH}:/usr/lib/llvm-9/bin"
 	@echo then finally install numba
 	@echo   . .bh/bin/activate \&\& pip install numba 
+
+docker:
+	apt install -y python3.7 python3.7-dev python3.7-pip
+	pip install wheel && pip install -r requirements.txt
+	rm -rf Parla.py
+	git clone git@github.com:ut-parla/Parla.py.git
+	cd Parla.py && python3 setup.py install
+	apt install llvm-9
+	export PATH="${PATH}:/usr/lib/llvm-9/bin"
+	pip install numba 
