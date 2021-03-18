@@ -71,6 +71,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
             self.d_grid_box_cumm  = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
             self.d_particles      = cuda.to_device(unst(self.particles))
+            self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float)
             self.device_arrays_initd = True
 
     def create_tree(self):
@@ -101,9 +102,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
                 logging.debug(f"    {parts[i]}")
 
     def summarize(self):
-        # alloc
-        self.d_COMs = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float)
-        
         blocks = 1
         threads = (self.grid_dim, self.grid_dim)
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 

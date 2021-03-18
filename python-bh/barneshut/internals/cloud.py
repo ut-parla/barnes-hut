@@ -31,7 +31,7 @@ class Cloud:
         for p in cloud2.particles:
             c.add_particle(p)  
         return c
-        
+
     #
     # general getter/setters
     #
@@ -92,13 +92,17 @@ class Cloud:
     def get_COM(self):
         # TODO: need a switch here to use different COM kernels
         if self.COM is None:
-            # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
-            M = np.sum(self.masses)
-            coords = np.multiply(self.positions, self.masses)
-            coords = np.add.reduce(coords)
-            coords /= M
             self.COM = Cloud(pre_alloc=1)
-            data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
+            # if we have no particle, COM is all zeros
+            if self.is_empty():
+                data = (0,) * 9
+            else:
+                # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
+                M = np.sum(self.masses)
+                coords = np.multiply(self.positions, self.masses)
+                coords = np.add.reduce(coords)
+                coords /= M
+                data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
             p = np.array(data, dtype=particle_type)
             self.COM.add_particle(p)
 

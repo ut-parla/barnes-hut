@@ -143,4 +143,5 @@ class SequentialBarnesHut (BaseBarnesHut):
         n = len(self.grid)
         for i in range(n):
             for j in range(n):
-                self.grid[i][j].tick()
+                if not self.grid[i][j].cloud.is_empty():
+                    self.grid[i][j].tick()

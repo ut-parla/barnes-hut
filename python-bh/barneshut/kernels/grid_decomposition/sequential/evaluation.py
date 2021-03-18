@@ -4,6 +4,14 @@ from barneshut.internals import Config
 from barneshut.grid_decomposition import Box
 from barneshut.kernels.helpers import get_bounding_box, get_neighbor_cells, remove_bottom_left_neighbors
 
+#
+#
+#  TODO: currently only __evaluate_com_concat_dedup checks if a box is empty. need to implement
+# this to other functions if we need to use them because an error occurs for a lot of particles in
+# small leaves. This happens because some boxes become empty and there is no checking above these
+# functions.
+#
+
 eval_fn = None   
 def get_evaluation_fn():
     global eval_fn
@@ -73,14 +81,23 @@ def __evaluate_com_concat_dedup(grid):
     n = len(grid)
     # for every box in the grid
     for cell in product(range(n), range(n)):
+        x,y = cell
+        # if box is empty, just skip it
+        if grid[x][y].cloud.is_empty():
+            continue
+
         neighbors = get_neighbor_cells(cell, len(grid))
-        all_cells = product(    range(n), range(n))
+        all_cells = product(range(n), range(n))
         
         boxes = []
         com_cells = []
         for c in all_cells:
             # for cells that are not neighbors, we need to aggregate COMs into a fake Box
             x,y = c
+            # if box is empty, just skip it
+            if grid[x][y].cloud.is_empty():
+                continue
+
             if c not in neighbors:
                 com_cells.append(grid[x][y])
                 #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
@@ -92,6 +109,9 @@ def __evaluate_com_concat_dedup(grid):
         # remove boxes that already computed their force to us (this function modifies neighbors list)
         for c in remove_bottom_left_neighbors(cell, neighbors):
             x,y = c
+            # if box is empty, just skip it
+            if grid[x][y].cloud.is_empty():
+                continue
             boxes.append(grid[x][y])
             logging.debug(f"Cell {n} is neighbor, direct interaction")
         
