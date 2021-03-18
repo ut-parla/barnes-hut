@@ -89,8 +89,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         g_place_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)
 
-        cuda.synchronize()
-
         # Swap so original d_particles is deallocated. dealloc d_grid_box_count
         self.d_particles = self.d_particles_sort
         self.d_grid_box_count = None
@@ -106,7 +104,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         threads = (self.grid_dim, self.grid_dim)
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
-        cuda.synchronize()
 
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
@@ -119,7 +116,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
 
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
-        cuda.synchronize()
 
         # if checking accuracy, we need to copy it back to host
         if self.checking_accuracy:

@@ -116,6 +116,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             self.d_particles = d_particles_sort
             self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
 
+        @notify_when_done
         def copy_particle_range_to_device(self):
             try:
                 self.d_particles.copy_to_device(self.host_particles[self.start:self.end])
@@ -124,15 +125,20 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 logging.debug(f"GPU {self.resident_gpu}: couldn't copy directly, need to realocate")
                 self.d_particles = cuda.to_device(self.host_particles[self.start:self.end])
 
+        @notify_when_done
         def summarize_and_collect(self, host_COMs):
-            # call COM kernel, get result back and put each into
-            # host_COMS
-            pass
+            blocks = 1
+            threads = (self.grid_dim, self.grid_dim)
+            g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
+                                        self.grid_dim, self.d_COMs)
+            COMs = self.d_COMs.copy_to_host()
+            logging.debug(f"COMS: {COMs}")
 
+        @notify_when_done
         def broadcast_COMs(self, host_COMS):
-            # copy host COMs into the device
-            pass
+            self.d_COMs.copy_to_device(host_COMS)
 
+        @notify_when_done
         def copy_nonresident_neighbors(self, grid_rages):
             """ Because the grid is split across multiple GPUs,
             some of the neighbors' particles of this GPU's boxes will not
@@ -141,6 +147,10 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             copy them to our GPU and also copy an index so that
             the CUDA kernel can find them.
             """
+            pass
+
+        @notify_when_done
+        def evaluate(self):
             pass
 
     def __create_grid(self):
@@ -262,9 +272,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
         self.call_method_all_cells("copy_particle_range_to_device")
 
-        import sys
-        sys.exit(0)
-
     def summarize(self):
         """ Every GPU pretty much needs all COMs,
         so calculate them and broadcast
@@ -272,7 +279,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         # host_COMs is the actual px, py, mass of each COM
         self.host_COMs = np.zeros((self.grid_dim,self.grid_dim, 3), dtype=np.float)
         self.call_method_all_cells("summarize_and_collect", self.host_COMs)
-        self.call_method_all_cells("broadcast_COMs", self.host_COMs)
+        #self.call_method_all_cells("broadcast_COMs", self.host_COMs)
 
     def evaluate(self):
         self.call_method_all_cells("copy_nonresident_neighbors", self.grid_ranges)
