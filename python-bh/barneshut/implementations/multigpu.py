@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 from barneshut.internals.config import Config
-from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
+from barneshut.kernels.helpers import get_bounding_box, next_perfect_square, get_neighbor_cells
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from math import sqrt, ceil
 from numba import cuda
@@ -12,7 +12,6 @@ from itertools import product
 
 #import kernels
 from barneshut.kernels.grid_decomposition.singlegpu.grid import *
-from barneshut.kernels.grid_decomposition.multigpu.grid import *
 
 LEAF_OCCUPANCY = 0.7
 # TODO: improve this thing to be an optimal
@@ -39,6 +38,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.gpu_cells_initd = False
         self.gpu_cells = {}
 
+        logging.debug(f"GPUs available: {cuda.gpus}")
+
     class GPUCell:
         def __init__(self, resident_gpu, host_particles):
             self.resident_gpu = resident_gpu
@@ -51,6 +52,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             self.thread = None
             self.device_allocd = False
             self.grid_dim = self.min_xy = self.step = None
+            self.cells = None
+            self.G = float(Config.get("bh", "grav_constant"))
+            self.keep_running = True
 
         def launch(self):
             """Launch ourselves as thread"""
@@ -65,7 +69,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             print(f"devices: {cuda.gpus}. resident: {self.resident_gpu}")
             with cuda.gpus[self.resident_gpu]:
                 logging.debug(f"Thread running in cuda context, GPU #{self.resident_gpu}")
-                while True:
+                while self.keep_running:
                     # block until we get a fn to execute
                     msg = self.queue.get()
                     fn_name = msg[0]
@@ -76,7 +80,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                     else:
                         args = msg[1]
                         getattr(self, fn_name)(*args)
-        
+            logging.debug(f"GPU {self.resident_gpu}: thread stopping...")
+
         def notify_when_done(fn):     
             @wraps(fn)
             def wrapper(*args, **kwargs):
@@ -92,9 +97,16 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float64)
                 self.device_allocd = True
 
+        def set_grid_cells(self, cells):
+            self.cells = [tuple(x) for x in cells]
+
         def set_particle_range(self, start, end):
             self.start = start
             self.end = end
+
+        @notify_when_done
+        def terminate(self):
+            self.keep_running = False
 
         @notify_when_done
         def copy_in_place_particles_copy_out(self):
@@ -126,17 +138,35 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 self.d_particles = cuda.to_device(self.host_particles[self.start:self.end])
 
         @notify_when_done
-        def summarize_and_collect(self, host_COMs):
+        def summarize_and_collect(self, host_COMs, lock):
+            # Before we had a subset of unordered points. now we have a subset of ordered points
+            # so we need to recalculate our cumm box count before summarizing
+            blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
+            threads = THREADS_PER_BLOCK
+            g_recalculate_box_cumm[blocks, threads](self.d_particles, self.d_grid_box_cumm, self.grid_dim)
+
             blocks = 1
             threads = (self.grid_dim, self.grid_dim)
-            g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
+            g_summarize_multigpu[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                         self.grid_dim, self.d_COMs)
-            COMs = self.d_COMs.copy_to_host()
-            logging.debug(f"COMS: {COMs}")
+            h_COMs = self.d_COMs.copy_to_host()
+
+            logging.debug(f"GPU {self.resident_gpu}:\n   COMS: {h_COMs}")
+            with lock:
+                host_COMs += h_COMs
 
         @notify_when_done
-        def broadcast_COMs(self, host_COMS):
+        def store_COMs(self, host_COMS):
             self.d_COMs.copy_to_device(host_COMS)
+
+        def get_close_neighbors(self):
+            cn = set()
+            logging.debug(f"GPU {self.resident_gpu}: cells {self.cells}")
+            for cell in self.cells:
+                cn |= set(get_neighbor_cells(cell, self.grid_dim))
+            cn -= set(self.cells)
+            logging.debug(f"GPU {self.resident_gpu}: close neighbors {cn}")
+            return cn
 
         @notify_when_done
         def copy_nonresident_neighbors(self, grid_rages):
@@ -147,11 +177,46 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             copy them to our GPU and also copy an index so that
             the CUDA kernel can find them.
             """
-            pass
+            cn = self.get_close_neighbors()
+            total_neighbor_particles = 0
+            for neighbor in cn:
+                x, y = neighbor
+                start, end = grid_rages[x,y]
+                total_neighbor_particles += end-start
+            logging.debug(f"GPU {self.resident_gpu}: close neighbors total particles is {total_neighbor_particles}.")
+
+            #save some space by just allocating px, py and mass
+            neighbor_particles = np.empty((total_neighbor_particles,3))
+            indices = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int16)
+
+            idx = 0
+            for neighbor in cn:
+                x, y = neighbor
+                start, end = grid_rages[x,y]
+                total = end-start
+                neighbor_particles[idx:idx+total] = self.host_particles[start:end, 0:3]
+                indices[x,y] = idx, idx+total
+
+            self.d_neighbors = cuda.to_device(neighbor_particles)
+            self.d_neighbors_indices = cuda.to_device(indices)
 
         @notify_when_done
         def evaluate(self):
-            pass
+            yblocks = ceil(self.end-self.start/THREADS_PER_BLOCK)
+            #TODO: a lot of these blocks make idle threads, maybe we can reduce it
+            blocks = (self.grid_dim*self.grid_dim, yblocks)
+            threads = min(THREADS_PER_BLOCK, self.end-self.start)
+
+            g_evaluate_boxes_multigpu[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, 
+                                      self.G, self.d_neighbors, self.d_neighbors_indices)
+
+            if self.debug:
+                ps = self.d_particles.copy_to_host()
+                logging.debug(f"GPU {self.resident_gpu}: evaluated points: {ps}")
+
+        @notify_when_done
+        def copy_into_host_particles(self):
+            self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
 
     def __create_grid(self):
         """Figure out the grid dimension and points.
@@ -239,7 +304,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         logging.debug(f"host particles after place/sort:\n{self.particles}")
 
         # map every box in the grid to a slice of the particles array since it is sorted
-        self.grid_ranges = np.empty((self.grid_dim,self.grid_dim, 2), dtype=np.int)
+        self.grid_ranges = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int)
         prev_box = self.particles[0][['gx', 'gy']]
         start = 0
         cnt = 0
@@ -257,7 +322,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 cnt = 0
             cnt += 1
 
-        logging.debug(f"grid range: {self.grid_ranges}")
+        logging.debug(f"grid ranges: {self.grid_ranges}")
 
         all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
         for i, box_range in enumerate(np.array_split(all_boxes, self.ngpus)):
@@ -268,6 +333,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             x,y = end_box
             end_p = self.grid_ranges[x,y][1]
             logging.debug(f"slice of gpu {i}: {start_p}-{end_p}")
+            self.gpu_cells[i].set_grid_cells(box_range)
             self.gpu_cells[i].set_particle_range(start_p, end_p)
 
         self.call_method_all_cells("copy_particle_range_to_device")
@@ -278,15 +344,33 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         """
         # host_COMs is the actual px, py, mass of each COM
         self.host_COMs = np.zeros((self.grid_dim,self.grid_dim, 3), dtype=np.float)
-        self.call_method_all_cells("summarize_and_collect", self.host_COMs)
-        #self.call_method_all_cells("broadcast_COMs", self.host_COMs)
+
+        self.call_method_all_cells("summarize_and_collect", self.host_COMs, threading.Lock())
+        self.call_method_all_cells("store_COMs", self.host_COMs)
 
     def evaluate(self):
         self.call_method_all_cells("copy_nonresident_neighbors", self.grid_ranges)
-        self.call_method_all_cells("evaluate", self.grid_ranges)
+        self.call_method_all_cells("evaluate")
 
+        if self.checking_accuracy:
+            self.call_method_all_cells("copy_into_host_particles")
+            
     def get_particles(self, sample_indices=None):
-        pass
+        if sample_indices is None:
+            return self.particles
+        else:
+            samples = {}
+            for i in sample_indices:
+                samples[i] = self.particles[i].copy()
+            return samples
 
     def timestep(self):
+        # TODO
        pass
+
+    def cleanup(self):
+        logging.debug("Terminating threads...")
+        self.call_method_all_cells("terminate")
+        for cell in self.gpu_cells.values():
+            cell.thread.join()
+        logging.debug("done!")

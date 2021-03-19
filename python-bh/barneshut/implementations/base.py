@@ -45,6 +45,10 @@ class BaseBarnesHut:
         """Each implementation must have it's own timestep"""
         raise NotImplementedError()
 
+    def cleanup(self):
+        """In case we need to do cleanup after we run, override this."""
+        pass
+
     def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
@@ -83,6 +87,8 @@ class BaseBarnesHut:
                     self.check_accuracy(sample_indices, nsquared_sample)
 
         Timer.print()
+        self.cleanup()
+
 
     def print_particles(self):
         """Print all particles' coordinates for debugging"""
