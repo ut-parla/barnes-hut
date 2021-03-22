@@ -15,7 +15,7 @@ from barneshut.kernels.grid_decomposition.singlegpu.grid import *
 
 LEAF_OCCUPANCY = 0.7
 # TODO: improve this thing to be an optimal
-THREADS_PER_BLOCK = 128
+THREADS_PER_BLOCK = 512
 
 #
 # TODO: Need to find a way of having a thread per GPU in a way that doesn't
@@ -66,7 +66,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             queue have function name to execute and optional args.
             Everything is run on the threads' GPU.
             """
-            print(f"devices: {cuda.gpus}. resident: {self.resident_gpu}")
+            #print(f"devices: {cuda.gpus}. resident: {self.resident_gpu}")
             with cuda.gpus[self.resident_gpu]:
                 logging.debug(f"Thread running in cuda context, GPU #{self.resident_gpu}")
                 while self.keep_running:
@@ -92,7 +92,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def alloc_on_device(self):
             if not self.device_allocd:
                 #TODO: check if grid_dim changed, because then we need to realloc
-                self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
+                zz = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int)
+                self.d_grid_box_count = cuda.to_device(zz)
+                #self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
                 self.d_grid_box_cumm  = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
                 self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float64)
                 self.device_allocd = True
@@ -121,9 +123,13 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             #run kernel
             blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
             threads = THREADS_PER_BLOCK
-            g_place_particles[blocks, threads](self.d_particles, d_particles_sort, self.min_xy, self.step, 
-                                            self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)
             
+            g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
+                          self.grid_dim, self.d_grid_box_count)
+            g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
+
+            g_sort_particles[blocks, threads](self.d_particles, d_particles_sort, self.d_grid_box_count)
+
             #copy out
             self.d_particles = d_particles_sort
             self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
@@ -145,9 +151,13 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             threads = THREADS_PER_BLOCK
             g_recalculate_box_cumm[blocks, threads](self.d_particles, self.d_grid_box_cumm, self.grid_dim)
 
-            blocks = 1
-            threads = (self.grid_dim, self.grid_dim)
-            g_summarize_multigpu[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
+            bsize = 16*16
+            threads = (16, 16)
+            nblocks = self.grid_dim*self.grid_dim / bsize
+            nblocks = ceil(sqrt(nblocks))
+            #print(f"need {nblocks} blocks")
+            blocks = (nblocks, nblocks)
+            g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                         self.grid_dim, self.d_COMs)
             h_COMs = self.d_COMs.copy_to_host()
 
@@ -202,13 +212,18 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
         @notify_when_done
         def evaluate(self):
-            yblocks = ceil(self.end-self.start/THREADS_PER_BLOCK)
-            #TODO: a lot of these blocks make idle threads, maybe we can reduce it
-            blocks = (self.grid_dim*self.grid_dim, yblocks)
-            threads = min(THREADS_PER_BLOCK, self.end-self.start)
+            # because of the limits of a block, we can't do one block per box, so let's spread
+            # the boxes into the x axis, and use the y axis to have more than 1024 threads 
+
+            yblocks = ceil((self.end-self.start)/THREADS_PER_BLOCK)
+            d_cells = cuda.to_device(self.cells)
+            blocks = (len(d_cells), yblocks)
+            threads = THREADS_PER_BLOCK
+
+            print(f"launching {blocks} {threads}")
 
             g_evaluate_boxes_multigpu[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, 
-                                      self.G, self.d_neighbors, self.d_neighbors_indices)
+                                      self.G, self.d_neighbors, self.d_neighbors_indices, d_cells, len(d_cells))
 
             if self.debug:
                 ps = self.d_particles.copy_to_host()

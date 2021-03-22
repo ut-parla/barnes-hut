@@ -68,8 +68,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         """
         if not self.device_arrays_initd:
             # alloc gpu arrays
-            self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
-            self.d_grid_box_cumm  = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
+            #self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
+            self.d_grid_box_cumm  = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int64)
             self.d_particles      = cuda.to_device(unst(self.particles))
             self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float)
             self.device_arrays_initd = True
@@ -83,11 +83,26 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         self.d_particles_sort = cuda.device_array_like(unst(self.particles))
 
+        # copy a zero'd out matrix
+        zz = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int32)
+        self.d_grid_box_count = cuda.to_device(zz)
+
         #call kernel
         blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
         threads = THREADS_PER_BLOCK
-        g_place_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.min_xy, self.step,
-                          self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)
+        g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
+                          self.grid_dim, self.d_grid_box_count)
+        g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
+        #c = self.d_grid_box_count.copy_to_host()
+        #print("count: ", c)
+
+        g_sort_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.d_grid_box_count)
+
+        #c = self.d_grid_box_count.copy_to_host()
+        #print("count: ", c)
+
+        #p = self.d_particles.copy_to_host()
+        #print("particles: ", p[:5])
 
         # Swap so original d_particles is deallocated. dealloc d_grid_box_count
         self.d_particles = self.d_particles_sort
@@ -100,8 +115,14 @@ class SingleGPUBarnesHut (BaseBarnesHut):
                 logging.debug(f"    {parts[i]}")
 
     def summarize(self):
-        blocks = 1
-        threads = (self.grid_dim, self.grid_dim)
+        bsize = 16*16
+        threads = (16, 16)
+        nblocks = self.grid_dim*self.grid_dim / bsize
+        nblocks = ceil(sqrt(nblocks))
+        #print(f"need {nblocks} blocks")
+        blocks = (nblocks, nblocks)
+        #print(f"grid_dim {self.grid_dim}  launching {blocks} {threads}")
+
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
 
@@ -113,9 +134,12 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         blocks = (self.grid_dim*self.grid_dim, yblocks)
         threads = min(THREADS_PER_BLOCK, self.n_particles)
 
-        logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
+        print(f"launching {blocks} {threads}")
 
+        logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
+
+        #cuda.synchronize()
 
         # if checking accuracy, we need to copy it back to host
         if self.checking_accuracy:

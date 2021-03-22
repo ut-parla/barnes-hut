@@ -6,7 +6,6 @@ from timer import Timer
 from barneshut.internals.particle import Particle, particle_type
 from barneshut.internals import Config
 
-SAMPLE_SIZE = 10
 
 class BaseBarnesHut:
 
@@ -15,7 +14,8 @@ class BaseBarnesHut:
         self.n_particles = None
         # Implementaitons might check this flag to do specific things
         self.checking_accuracy = False
-
+        self.sample_size = int(Config.get("general", "sample_check_size"))
+        
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
         from file. The order of things depends on how it was generated,
@@ -112,7 +112,7 @@ class BaseBarnesHut:
     def generate_sample_indices(self):
         # fixed seed just so we keep this equal across runs
         random.seed(0)
-        samples = random.sample(range(self.n_particles), SAMPLE_SIZE)
+        samples = random.sample(range(self.n_particles), self.sample_size)
         logging.debug(f"acc_check: sample is {samples}")
         return samples
 
@@ -165,11 +165,11 @@ class BaseBarnesHut:
             a1 = uns(nsquared_sample[i][['ax', 'ay']])
             a2 = uns(impl_sample[i][['ax', 'ay']])
             
-            print(f"n^2: {a1}   impl:  {a2}")
-
+            #print(f"n^2: {a1}   impl:  {a2}")
             diff = np.abs(a1 - a2)
-            print(f"diff on point {i}:  {diff}")
+            #print(f"diff on point {i}:  {diff}")
             cum_err += diff
 
-        cum_err /= float(SAMPLE_SIZE)
-        print(f"avg error across {SAMPLE_SIZE} points: {cum_err}")
+        cum_err /= float(self.sample_size)
+        err = ", ".join([str(x) for x in cum_err])
+        print(f"avg error across {self.sample_size} points: {err}")

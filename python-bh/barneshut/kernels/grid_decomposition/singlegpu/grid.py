@@ -14,16 +14,16 @@ _gx, _gy = 7, 8
 
 @cuda.jit(device=True)
 def copy_point(src, src_idx, dest, dest_idx):
+    #print(f"srcidx {src_idx}  dest_idx {dest_idx}")
     for i in range(9):
         dest[dest_idx][i] = src[src_idx][i] 
 
 #TODO: check orientation of ndarray, we might have to transpose for performance
 @cuda.jit
-def g_place_particles(particles, particles_ordered, min_xy, step, grid_dim, grid_box_count, grid_box_cumm):
+def g_place_particles(particles, min_xy, step, grid_dim, grid_box_count):
     """
     Args:
         particles: ndarray, array of particles
-        particles_ordered: ndarray, same shape as particles.  TODO: do this in-place.
         min_xy: (min_x, min_y), bottom left point of bounding box
         step: size of each edge of the grid
         grid_dim: amount of boxes in the grid
@@ -35,15 +35,7 @@ def g_place_particles(particles, particles_ordered, min_xy, step, grid_dim, grid
     min_x, min_y = min_xy[0], min_xy[1]
     n_particles = particles.shape[0]
 
-    # since we can't zero an array from host, let's do it here real quick
-    max_gb = grid_dim*grid_dim
-    if tid < max_gb:
-        row = int(tid / grid_dim)
-        col = tid - (row*grid_dim)
-        grid_box_count[row, col] = 0
-
-    cuda.syncthreads()
-
+    # find where each particle belongs in the grid
     pidx = tid
     while pidx < n_particles:
         particles[pidx, _gx] = (particles[pidx, _px] - min_x) / step
@@ -56,46 +48,47 @@ def g_place_particles(particles, particles_ordered, min_xy, step, grid_dim, grid
         # add 1 to the index x,y
         if not CUDA_DEBUG:
             cuda.atomic.add(grid_box_count, (x,y), 1)
+            #print("grid ", x, " ", y, " = ", old)
         else:
             old = cuda.atomic.add(grid_box_count, (x,y), 1)
             print("grid {}/{} = {}".format(x, y, old))
-        
         # go around
         pidx += tsize
 
-    cuda.syncthreads()
+@cuda.jit
+def g_calculate_box_cumm(grid_dim, grid_box_count, grid_box_cumm):
+    acc = 0
+    for j in range(grid_dim):
+        for i in range(grid_dim):
+            acc += grid_box_count[i,j]
+            # add to accumulate arrays
+            grid_box_count[i,j] = acc
+            grid_box_cumm[i,j]  = acc
 
-    # I don't think this is worth launching a kernel for since 
-    # grid is usually pretty small
-    if tid == 0:
-        acc = 0
-        for j in range(grid_dim):
-            for i in range(grid_dim):
-                acc += grid_box_count[i,j]
-                # add to accumulate arrays
-                grid_box_count[i,j] = acc
-                grid_box_cumm[i,j]  = acc
-
-                if CUDA_DEBUG:
-                    print("Cumm: {}/{}  =  {}".format(i, j, grid_box_cumm[i,j]))
-            
+            if CUDA_DEBUG:
+                print("Cumm: {}/{}  =  {}".format(i, j, grid_box_cumm[i,j]))
+            #print("Cumm: ", i, " ", j, " = ", grid_box_cumm[i,j])
     # after this point we have cumulative box count, which means the last
     # element of grid_box_count is == n
 
-    cuda.syncthreads()
+@cuda.jit
+def g_sort_particles(particles, particles_ordered, grid_box_count):
+    tid   = cuda.grid(1)
+    tsize = cuda.gridsize(1)
+    n_particles = particles.shape[0]
 
     pidx = tid
     while pidx < n_particles:
         x = int(particles[pidx, _gx])
         y = int(particles[pidx, _gy])
+        #print("tid ", tid, " x ", x, " y ", y)
         # this is the idx this particle will be put into
-        new_idx = cuda.atomic.sub(grid_box_count, (x,y), 1) - 1
+        new_idx = cuda.atomic.add(grid_box_count, (x,y), -1) - 1
         #if CUDA_DEBUG:
             #print("copy from {} to {}".format(pidx, new_idx))
         # copy it there
         copy_point(particles, pidx, particles_ordered, new_idx)
         pidx += tsize
-
 
 @cuda.jit(device=True)
 def d_previous_box_count(grid_box, gx, gy, grid_dim):
@@ -120,30 +113,37 @@ def g_summarize(particles, grid_box_cumm, grid_dim, COMs):
     Launch one thread per box in the grid.
     """
     my_x, my_y = cuda.grid(2)
-    start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
-    end = grid_box_cumm[my_x, my_y]
+    #print("x, y " , my_x, " ", my_y)
 
-    M = .0
-    acc_x = .0
-    acc_y = .0
+    if my_x < grid_dim and my_y < grid_dim:
+        start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
+        end = grid_box_cumm[my_x, my_y]
+        COMs[my_x][my_y][0] = 0
+        COMs[my_x][my_y][1] = 0
+        COMs[my_x][my_y][2] = 0
+        #print("start/end ", start," ", end)
+        if start != end:  #requred for multi gpu
+        
+            M = .0
+            acc_x = .0
+            acc_y = .0
 
-    #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
+            #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
+            for i in range(start, end):
+                px = particles[i, _px]
+                py = particles[i, _py]
+                mass = particles[i, _mas]
+                acc_x += px * mass
+                acc_y += py * mass
+                M += mass
+            if M != .0:
+                COMs[my_x][my_y][0] = acc_x / M
+                COMs[my_x][my_y][1] = acc_y / M
+                COMs[my_x][my_y][2] = M
 
-    for i in range(start, end):
-        px = particles[i, _px]
-        py = particles[i, _py]
-        mass = particles[i, _mas]
-        acc_x += px * mass
-        acc_y += py * mass
-        M += mass
-
-    COMs[my_x][my_y][0] = acc_x / M
-    COMs[my_x][my_y][1] = acc_y / M
-    COMs[my_x][my_y][2] = M
-
-    if CUDA_DEBUG:
-        print("COM of {}/{} is  {}/{}  with mass {}".format(my_x, my_y,
-                COMs[my_x][my_y][0], COMs[my_x][my_y][1], COMs[my_x][my_y][2]))
+            if CUDA_DEBUG:
+                print("COM of {}/{} is  {}/{}  with mass {}".format(my_x, my_y,
+                        COMs[my_x][my_y][0], COMs[my_x][my_y][1], COMs[my_x][my_y][2]))
 
 @cuda.jit(device=True)
 def d_is_neighbor(gx, gy, gx2, gy2):
@@ -231,57 +231,21 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     n = end-start
 
     #if my_x == 0 and my_y == 0:
-    if 1:
-        if tid < n:
-            for gx in range(grid_dim): 
-                for gy in range(grid_dim):
-                    # self to self
-                    if gx == my_x and gy == my_y:
-                        d_self_self_grav(particles, start, end, G)
-                    # neighbors, direct p2p interaction
-                    elif d_is_neighbor(my_x, my_y, gx, gy):
-                        other_end = grid_box_cumm[gx, gy]
-                        other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
-                        #print("{}  eval  {} - {}".format(tid, other_start, other_end))
-                        d_self_other_grav(particles, start, end, other_start, other_end, G)
-                    # not neighbor, use COM
-                    else:
-                        d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
-
-
-@cuda.jit
-def g_summarize_multigpu(particles, grid_box_cumm, grid_dim, COMs):
-    """Write something better. I just want it to work.
-    Launch one thread per box in the grid.
-    """
-    my_x, my_y = cuda.grid(2)
-    start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
-    end = grid_box_cumm[my_x, my_y]
-    COMs[my_x][my_y][0] = 0
-    COMs[my_x][my_y][1] = 0
-    COMs[my_x][my_y][2] = 0
-    print("COM ", my_x, " ", my_y, " start/end ", start, end)
-    if start != end:  #requred for multi gpu
-        M = .0
-        acc_x = .0
-        acc_y = .0
-
-        #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
-        for i in range(start, end):
-            px = particles[i, _px]
-            py = particles[i, _py]
-            mass = particles[i, _mas]
-            acc_x += px * mass
-            acc_y += py * mass
-            M += mass
-
-        COMs[my_x][my_y][0] = acc_x / M
-        COMs[my_x][my_y][1] = acc_y / M
-        COMs[my_x][my_y][2] = M
-
-        if CUDA_DEBUG:
-            print("COM of {}/{} is  {}/{}  with mass {}".format(my_x, my_y,
-                    COMs[my_x][my_y][0], COMs[my_x][my_y][1], COMs[my_x][my_y][2]))
+    if tid < n:
+        for gx in range(grid_dim): 
+            for gy in range(grid_dim):
+                # self to self
+                if gx == my_x and gy == my_y:
+                    d_self_self_grav(particles, start, end, G)
+                # neighbors, direct p2p interaction
+                elif d_is_neighbor(my_x, my_y, gx, gy):
+                    other_end = grid_box_cumm[gx, gy]
+                    other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
+                    #print("{}  eval  {} - {}".format(tid, other_start, other_end))
+                    d_self_other_grav(particles, start, end, other_start, other_end, G)
+                # not neighbor, use COM
+                else:
+                    d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
 
 @cuda.jit
 def g_recalculate_box_cumm(particles, grid_box_cumm, grid_dim):
@@ -344,15 +308,17 @@ def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G)
             particles[pid, _ay] -= (f * ydif / my_mass)
 
 @cuda.jit
-def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neighbors, neighbors_indices):
+def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neighbors, neighbors_indices, cells, ncells):
     """
     Let's do the easy thing: launch one block per box in the grid, launch threads
     equal to the max # of particles in a box
     """
-    my_y = int(cuda.blockIdx.x / grid_dim)
-    my_x = cuda.blockIdx.x - (my_y*grid_dim)
+    cell_idx = cuda.blockIdx.x
+    my_y = cells[cell_idx][0]
+    my_x = cells[cell_idx][1]
+
     tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
-    #print("grix {}/{}  tid{}".format(my_x, my_y, tid))
+    
     start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
     end = grid_box_cumm[my_x, my_y]
     n = end-start
