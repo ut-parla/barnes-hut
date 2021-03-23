@@ -189,7 +189,6 @@ class PyKokkosBarnesHut(BaseBarnesHut):
             pk.set_default_space(pk.Cuda)
         else:
             pk.set_default_space(pk.OpenMP)
-        self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
 
     def read_particles_from_file(self, filename):

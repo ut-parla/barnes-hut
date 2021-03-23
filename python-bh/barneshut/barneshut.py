@@ -20,8 +20,9 @@ class BarnesHut:
         elif impl == "multigpu":
             from .implementations.multigpu import MultiGPUBarnesHut
             bh = MultiGPUBarnesHut()
-        #elif impl == "parla":
-            #bh = ParlaBarnesHut()
+        elif impl == "parla":
+            from .implementations.parla import ParlaBarnesHut
+            bh = ParlaBarnesHut()
             
         self.bh = bh
 

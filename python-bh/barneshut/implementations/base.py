@@ -1,11 +1,13 @@
 import numpy as np
-from numpy.lib.recfunctions import structured_to_unstructured as uns
+from numpy.lib.recfunctions import structured_to_unstructured as unst
 import random
 import logging
 from timer import Timer
 from barneshut.internals.particle import Particle, particle_type
 from barneshut.internals import Config
+from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 
+LEAF_OCCUPANCY = 0.7
 
 class BaseBarnesHut:
 
@@ -15,7 +17,8 @@ class BaseBarnesHut:
         # Implementaitons might check this flag to do specific things
         self.checking_accuracy = False
         self.sample_size = int(Config.get("general", "sample_check_size"))
-        
+        self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
+
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
         from file. The order of things depends on how it was generated,
@@ -89,7 +92,6 @@ class BaseBarnesHut:
         Timer.print()
         self.cleanup()
 
-
     def print_particles(self):
         """Print all particles' coordinates for debugging"""
         #for p in self.particles:
@@ -139,10 +141,10 @@ class BaseBarnesHut:
                 # skip self to self
                 if i == j:
                     continue
-                p1_p    = uns(samples[i][['px', 'py']])
-                p1_mass = uns(samples[i][['mass']])
-                p2_p    = uns(particles[j][['px', 'py']])
-                p2_mass = uns(particles[j][['mass']])
+                p1_p    = unst(samples[i][['px', 'py']])
+                p1_mass = unst(samples[i][['mass']])
+                p2_p    = unst(particles[j][['px', 'py']])
+                p2_mass = unst(particles[j][['mass']])
                 dif = p1_p - p2_p
                 dist = np.sqrt(np.sum(np.square(dif)))
                 f = (G * p1_mass * p2_mass) / (dist*dist)
@@ -162,8 +164,8 @@ class BaseBarnesHut:
         impl_sample = self.get_particles(sample_indices)
         cum_err = np.zeros(2)
         for i in sample_indices:
-            a1 = uns(nsquared_sample[i][['ax', 'ay']])
-            a2 = uns(impl_sample[i][['ax', 'ay']])
+            a1 = unst(nsquared_sample[i][['ax', 'ay']])
+            a2 = unst(impl_sample[i][['ax', 'ay']])
             
             #print(f"n^2: {a1}   impl:  {a2}")
             diff = np.abs(a1 - a2)
@@ -173,3 +175,37 @@ class BaseBarnesHut:
         cum_err /= float(self.sample_size)
         err = ", ".join([str(x) for x in cum_err])
         print(f"avg error across {self.sample_size} points: {err}")
+
+
+    #
+    # Some common helper methods
+    #
+
+    def set_particles_bounding_box(self):
+        # get square bounding box around all particles
+        unstr_points = unst(self.particles[['px', 'py']], copy=False)
+        bb_min, bb_max = get_bounding_box(unstr_points)
+        bottom_left = np.array(bb_min)
+        top_right = np.array(bb_max)
+
+        # if more than one particle per leaf, let's assume an occupancy of
+        # 80% (arbitrary number), because if we use 100% we might have leaves
+        # with >particles_per_leaf particles. This is all assuming a normal
+        # random distribution.
+        if self.particles_per_leaf == 1:
+            nleaves = self.particles_per_leaf
+        else:
+            n = len(self.particles)
+            nleaves = n / (LEAF_OCCUPANCY * self.particles_per_leaf)
+
+        # find next perfect square
+        nleaves = next_perfect_square(nleaves)
+        self.grid_dim = int(nleaves**0.5)
+        logging.debug(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
+                we need {nleaves} leaves, whose next perfect square is {self.grid_dim}.
+                Grid will be {self.grid_dim}x{self.grid_dim}''')
+    
+        # set BB points and step
+        self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
+        self.min_xy = bottom_left
+        self.max_xy = top_right

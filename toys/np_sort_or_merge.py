@@ -15,10 +15,8 @@ import statistics
 # stable sort it is...
 
 
-
 SZ = 10_000_000
 TASKS = 4
-
 N_TESTS = 5
 
 def merge_sorted_arrays(a, b):

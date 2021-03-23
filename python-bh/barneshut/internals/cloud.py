@@ -3,29 +3,28 @@ import logging
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from .particle import particle_type
 from .config import Config
-from barneshut.kernels.gravity import get_gravity_kernel
-
 
 class Cloud:
     
-    def __init__(self, pre_alloc=None):
+    def __init__(self, grav_kernel, pre_alloc=None):
         self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
         self.COM = None
-        self.G = float(Config.get("bh", "grav_constant"))
         self.n = 0        
-        if pre_alloc:
+        if pre_alloc is not None:
             self.__particles = np.empty((pre_alloc+1,), dtype=particle_type)
         else:
             self.__particles = None
+        
+        self.G = float(Config.get("bh", "grav_constant"))
         # Set our kernels
-        self.__apply_force = get_gravity_kernel()
+        self.grav_kernel = grav_kernel
 
     #
     # Factories
     #
     @staticmethod
     def concatenation(cloud1, cloud2):
-        c = Cloud(pre_alloc=cloud1.n + cloud2.n)
+        c = Cloud(self.grav_kernel, pre_alloc=cloud1.n + cloud2.n)
         for p in cloud1.particles:
             c.add_particle(p)   
         for p in cloud2.particles:
@@ -92,7 +91,7 @@ class Cloud:
     def get_COM(self):
         # TODO: need a switch here to use different COM kernels
         if self.COM is None:
-            self.COM = Cloud(pre_alloc=1)
+            self.COM = Cloud(self.grav_kernel, pre_alloc=1)
             # if we have no particle, COM is all zeros
             if self.is_empty():
                 data = (0,) * 9
@@ -115,5 +114,5 @@ class Cloud:
         self.positions += self.velocities * tick
 
     def apply_force(self, other_cloud, update_other=False):
-        self.__apply_force(self, other_cloud, self.G, update_other)
+        self.grav_kernel(self, other_cloud, self.G, update_other)
     

@@ -31,7 +31,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         """Our parent will init `self.particles = []` only, we need to do 
         what else we need."""
         super().__init__()
-        self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
         self.grid = None
         self.ngpus = int(Config.get("multigpu", "ngpus"))
         self.device_arrays_initd = False
