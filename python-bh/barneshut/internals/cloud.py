@@ -108,6 +108,8 @@ class Cloud:
         return self.COM
 
     def tick_particles(self):
+        if self.n == 0:
+            return
         tick = float(Config.get("bh", "tick_seconds"))
         self.velocities += self.accelerations * tick
         self.accelerations[:,:] = 0.0               

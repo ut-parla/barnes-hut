@@ -17,6 +17,9 @@ config.THREADING_LAYER = 'omp'
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
+parla_logger = logging.getLogger('parla')
+parla_logger.setLevel(logging.WARNING)
+
 # import entry point
 from barneshut import BarnesHut
 
