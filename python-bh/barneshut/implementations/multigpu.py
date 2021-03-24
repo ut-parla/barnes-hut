@@ -232,6 +232,14 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def copy_into_host_particles(self):
             self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
 
+        @notify_when_done
+        def tick_particles(self):
+            blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
+            threads = THREADS_PER_BLOCK
+            tick = float(Config.get("bh", "tick_seconds"))
+            g_tick_particles[blocks, threads](self.d_particles, tick)
+
+
     def __create_grid(self):
         """Figure out the grid dimension and points.
         This function sets:
@@ -298,6 +306,10 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         
         #initialize (once) our cells, one per GPU
         self.__init_gpu_cells()
+
+        # store the masses so we can unshuffle later, check timestep function.
+        if self.checking_accuracy:
+            self.ordered_masses = self.particles['mass']
 
         #split particle array in equal parts
         logging.debug("Splitting particle array into chunks:")
@@ -379,8 +391,25 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             return samples
 
     def timestep(self):
-        # TODO
-       pass
+        self.call_method_all_cells("tick_particles")
+
+        # if checking accuracy, we need to copy it back to host
+        if self.checking_accuracy:
+            """Alright, fasten your seatbelts, this is some ugly
+            research code.
+            We first argsort the unshuffled particle masses, then argsort that
+            array, which is needed to undo a sort, similar to what we do in the
+            sequential check.
+            Then, when we get the shuffled array from the GPU we argsort it
+            and use the previous undo argsort to shuffle it back to the original
+            positions. This assumes that masses are unique, which they probably aren't,
+            so unless things are somehow stable, we might see different errors each run.
+            """
+            self.d_particles.copy_to_host(unst(self.particles))
+            would_sort = np.argsort(self.ordered_masses)
+            undo_sort = np.argsort(would_sort)
+            would_sort_particles = np.argsort(self.particles, order=('mass'), axis=0)
+            self.particles = self.particles[would_sort_particles][undo_sort]
 
     def cleanup(self):
         logging.debug("Terminating threads...")

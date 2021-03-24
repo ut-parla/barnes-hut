@@ -80,6 +80,10 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.__create_grid()        
         self.__init_device_arrays()
 
+        # store the masses so we can unshuffle later, check timestep function.
+        if self.checking_accuracy:
+            self.ordered_masses = self.particles['mass']
+
         self.d_particles_sort = cuda.device_array_like(unst(self.particles))
 
         # copy a zero'd out matrix
@@ -131,7 +135,21 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         # if checking accuracy, we need to copy it back to host
         if self.checking_accuracy:
+            """Alright, fasten your seatbelts, this is some ugly
+            research code.
+            We first argsort the unshuffled particle masses, then argsort that
+            array, which is needed to undo a sort, similar to what we do in the
+            sequential check.
+            Then, when we get the shuffled array from the GPU we argsort it
+            and use the previous undo argsort to shuffle it back to the original
+            positions. This assumes that masses are unique, which they probably aren't,
+            so unless things are somehow stable, we might see different errors each run.
+            """
             self.d_particles.copy_to_host(unst(self.particles))
+            would_sort = np.argsort(self.ordered_masses)
+            undo_sort = np.argsort(would_sort)
+            would_sort_particles = np.argsort(self.particles, order=('mass'), axis=0)
+            self.particles = self.particles[would_sort_particles][undo_sort]
 
     def get_particles(self, sample_indices=None):
         if sample_indices is None:

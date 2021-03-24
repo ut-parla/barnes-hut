@@ -106,14 +106,14 @@ class SequentialBarnesHut (BaseBarnesHut):
     def evaluate(self):
         self.__evaluate(self.grid)
 
-        # if checking accuracy, unsort the particles
-        if self.checking_accuracy:
-            self.particles = self.particles[np.argsort(self.particles_argsort)]
-            self.particles_argsort = None
-
     def timestep(self):
         n = len(self.grid)
         for i in range(n):
             for j in range(n):
                 if not self.grid[i][j].cloud.is_empty():
                     self.grid[i][j].tick()
+
+        # if checking accuracy, unsort the particles
+        if self.checking_accuracy:
+            self.particles = self.particles[np.argsort(self.particles_argsort)]
+            self.particles_argsort = None
