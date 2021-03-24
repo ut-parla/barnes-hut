@@ -1,10 +1,10 @@
 import numpy as np
 
 particle_type = np.dtype([('px','f8'), ('py','f8'),   # particle position
-                          ('mass','f8'),              # mass
+                          ('mass','f4'),              # mass
                           ('vx','f8'), ('vy','f8'),   # velocity
                           ('ax','f8'), ('ay','f8'),   # acceleration
-                          ('gx','f8'), ('gy','f8')])  # grid position
+                          ('gx','f4'), ('gy','f4')])  # grid position
 class Particle:
 
     @staticmethod

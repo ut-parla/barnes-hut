@@ -126,8 +126,6 @@ class BaseBarnesHut:
         particles = self.get_particles()
         samples = {}
 
-        logging.debug(f"particles prerond: {particles}")
-
         # copy sampled particles so we can modify them
         for i in sample_indices:
             samples[i] = particles[i].copy()
@@ -154,6 +152,15 @@ class BaseBarnesHut:
 
             logging.debug(f"n^2 algo for particle {i}: {samples[i]['ax']}/{samples[i]['ay']}")
 
+        tick = float(Config.get("bh", "tick_seconds"))
+        for i in sample_indices:
+
+            samples[i]['vx'] += samples[i]['ax'] * tick
+            samples[i]['vy'] += samples[i]['ay'] * tick
+            samples[i]['ax'] = 0.0
+            samples[i]['ay'] = 0.0
+            samples[i]['px'] += samples[i]['vx'] * tick
+            samples[i]['py'] += samples[i]['vy'] * tick
         return samples
 
     def check_accuracy(self, sample_indices, nsquared_sample):
@@ -164,17 +171,20 @@ class BaseBarnesHut:
         impl_sample = self.get_particles(sample_indices)
         cum_err = np.zeros(2)
         for i in sample_indices:
-            a1 = unst(nsquared_sample[i][['ax', 'ay']])
-            a2 = unst(impl_sample[i][['ax', 'ay']])
+            nsq = unst(nsquared_sample[i][['px', 'py']])
+            a2 = unst(impl_sample[i][['px', 'py']])
             
-            #print(f"n^2: {a1}   impl:  {a2}")
-            diff = np.abs(a1 - a2)
-            #print(f"diff on point {i}:  {diff}")
+            diff = np.fabs(nsq - a2) / nsq
+
+            logging.debug(f"nsquared p{i} : {nsq}")
+            logging.debug(f"impl     p{i} : {a2}")
+            logging.debug(f"diff on point {i}:  {np.fabs(nsq - a2) / nsq}")
+            logging.debug(f"relative err:  {diff}")
             cum_err += diff
 
         cum_err /= float(self.sample_size)
         err = ", ".join([str(x) for x in cum_err])
-        print(f"avg error across {self.sample_size} points: {err}")
+        print(f"avg relative error across {self.sample_size} points: {err}")
 
 
     #

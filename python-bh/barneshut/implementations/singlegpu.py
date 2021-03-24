@@ -8,7 +8,7 @@ from .base import BaseBarnesHut
 from numba import cuda
 
 #import kernels
-from barneshut.kernels.grid_decomposition.singlegpu.grid import *
+from barneshut.kernels.grid_decomposition.gpu.grid import *
 
 LEAF_OCCUPANCY = 0.7
 
@@ -92,16 +92,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
         g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
-        #c = self.d_grid_box_count.copy_to_host()
-        #print("count: ", c)
 
         g_sort_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.d_grid_box_count)
-
-        #c = self.d_grid_box_count.copy_to_host()
-        #print("count: ", c)
-
-        #p = self.d_particles.copy_to_host()
-        #print("particles: ", p[:5])
 
         # Swap so original d_particles is deallocated. dealloc d_grid_box_count
         self.d_particles = self.d_particles_sort
@@ -118,27 +110,24 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         threads = (16, 16)
         nblocks = self.grid_dim*self.grid_dim / bsize
         nblocks = ceil(sqrt(nblocks))
-        #print(f"need {nblocks} blocks")
         blocks = (nblocks, nblocks)
-        #print(f"grid_dim {self.grid_dim}  launching {blocks} {threads}")
-
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
 
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
         # the boxes into the x axis, and use the y axis to have more than 1024 threads 
-        
         yblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
         blocks = (self.grid_dim*self.grid_dim, yblocks)
         threads = min(THREADS_PER_BLOCK, self.n_particles)
-
-        print(f"launching {blocks} {threads}")
-
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
 
-        #cuda.synchronize()
+    def timestep(self):
+        tick = float(Config.get("bh", "tick_seconds"))
+        blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
+        threads = THREADS_PER_BLOCK
+        g_tick_particles[blocks, threads](self.d_particles, tick)
 
         # if checking accuracy, we need to copy it back to host
         if self.checking_accuracy:
@@ -152,6 +141,3 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             for i in sample_indices:
                 samples[i] = self.particles[i].copy()
             return samples
-
-    def timestep(self):
-       pass

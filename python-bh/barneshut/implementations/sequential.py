@@ -9,7 +9,6 @@ from timer import Timer
 from .base import BaseBarnesHut
 
 
-
 class SequentialBarnesHut (BaseBarnesHut):
     """ Sequential implementation of nbody. Currently not Barnes-hut but
     a box decomposition."""
@@ -109,7 +108,7 @@ class SequentialBarnesHut (BaseBarnesHut):
 
         # if checking accuracy, unsort the particles
         if self.checking_accuracy:
-            self.particles = self.particles[self.particles_argsort]
+            self.particles = self.particles[np.argsort(self.particles_argsort)]
             self.particles_argsort = None
 
     def timestep(self):

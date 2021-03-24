@@ -11,7 +11,7 @@ from functools import wraps
 from itertools import product
 
 #import kernels
-from barneshut.kernels.grid_decomposition.singlegpu.grid import *
+from barneshut.kernels.grid_decomposition.gpu.grid import *
 
 LEAF_OCCUPANCY = 0.7
 # TODO: improve this thing to be an optimal

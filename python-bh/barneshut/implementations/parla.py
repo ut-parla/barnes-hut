@@ -77,7 +77,6 @@ class ParlaBarnesHut (BaseBarnesHut):
     async def parla_place_particles(self):
         ppt = int(Config.get("parla", "placement_particles_per_task"))
         slices = ceil(self.n_particles / ppt)
-        print(f"sl {self.n_particles}   {ppt}")
         logging.debug(f"Launching {slices} parla tasks to calculate particle placement.")
 
         placement_TS = TaskSpace("particle_placement")
@@ -91,6 +90,13 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         await placement_TS
         
+        # if we are checking accuracy, we need to save how we sorted particles.
+        # performance doesn't matter, so do the easy way
+        if self.checking_accuracy:
+            self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
+
+        print("argsort  ", self.particles_argsort)
+
         self.particles.sort(order=('gx', 'gy'), axis=0)
         # below is same from sequential
         # TODO: change from unique to a manual O(n) scan, might be faster
@@ -118,13 +124,6 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.create_grid_boxes()
 
         await self.parla_place_particles()
-
-        self.particles.sort(order=('gx', 'gy'), axis=0)
-        
-        # # if we are checking accuracy, we need to save how we sorted particles.
-        # # performance doesn't matter, so do the easy way
-        # if self.checking_accuracy:
-        #     self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
 
         # sort by grid position
         up = unst(self.particles)
@@ -208,10 +207,10 @@ class ParlaBarnesHut (BaseBarnesHut):
                         # we also need to interact with ourself
                         self_box.apply_force(self_box)
 
-        # # if checking accuracy, unsort the particles
-        # if self.checking_accuracy:
-        #     self.particles = self.particles[self.particles_argsort]
-        #     self.particles_argsort = None
+        # if checking accuracy, unsort the particles
+        if self.checking_accuracy:
+            self.particles = self.particles[np.argsort(self.particles_argsort)]
+            self.particles_argsort = None
 
     async def timestep(self):
         bpt = int(Config.get("parla", "timestep_boxes_per_task"))
@@ -230,12 +229,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         await timestep_TS
 
     def get_particles(self, sample_indices=None):
-        # if sample_indices is None:
-        #     return self.particles
-        # else:
-        #     samples = {}
-        #     for i in sample_indices:
-        #         samples[i] = self.particles[i].copy()
-        #     return samples
-        # TODO
-        pass
+         if sample_indices is None:
+             return self.particles
+         else:
+             samples = {}
+             for i in sample_indices:
+                 samples[i] = self.particles[i].copy()
+             return samples
