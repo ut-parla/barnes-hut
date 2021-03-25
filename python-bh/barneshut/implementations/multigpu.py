@@ -3,12 +3,14 @@ import numpy as np
 from barneshut.internals.config import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square, get_neighbor_cells
 from numpy.lib.recfunctions import structured_to_unstructured as unst
+from numpy.lib.recfunctions import unstructured_to_structured as strd
 from math import sqrt, ceil
 from numba import cuda
 import threading, queue
 from .base import BaseBarnesHut
 from functools import wraps
 from itertools import product
+from barneshut.internals.particle import particle_type
 
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
@@ -42,7 +44,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
     class GPUCell:
         def __init__(self, resident_gpu, host_particles):
             self.resident_gpu = resident_gpu
-            self.host_particles = unst(host_particles)
+            self.str_host_particles = host_particles
+            self.host_particles = unst(host_particles, copy=False)
             self.debug = logging.root.level == logging.DEBUG
             self.queue = queue.Queue()
             self.done_event = threading.Event()
@@ -117,30 +120,34 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             self.alloc_on_device()
             #copy in
             self.d_particles = cuda.to_device(self.host_particles[self.start:self.end])
-            d_particles_sort = cuda.device_array_like(self.host_particles[self.start:self.end])
-            
+            d_particles_sort = cuda.device_array_like(self.d_particles)
+
             #run kernel
             blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
             threads = THREADS_PER_BLOCK
-            
+            logging.debug(f"launching {blocks} {threads} kernels")
             g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
             g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
 
             g_sort_particles[blocks, threads](self.d_particles, d_particles_sort, self.d_grid_box_count)
 
-            #copy out
+            # WHYYYY doesnt this wooooork...
+            # memory goes BOOM now :(
+            #d_particles_sort.copy_to_host( unst(self.str_host_particles, copy=False)[self.start:self.end] )
+            x = d_particles_sort.copy_to_host()
+            self.str_host_particles[self.start:self.end] = strd(x, copy=False, dtype=particle_type)
             self.d_particles = d_particles_sort
-            self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
 
         @notify_when_done
         def copy_particle_range_to_device(self):
             try:
-                self.d_particles.copy_to_device(self.host_particles[self.start:self.end])
+                self.d_particles.copy_to_device(
+                    unst(self.str_host_particles, copy=False)[self.start:self.end])
                 logging.debug(f"GPU {self.resident_gpu}: copied our slice directly to preallocated darray")
             except:
                 logging.debug(f"GPU {self.resident_gpu}: couldn't copy directly, need to realocate")
-                self.d_particles = cuda.to_device(self.host_particles[self.start:self.end])
+                self.d_particles = cuda.to_device(unst(self.str_host_particles, copy=False)[self.start:self.end])
 
         @notify_when_done
         def summarize_and_collect(self, host_COMs, lock):
@@ -152,10 +159,12 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
             bsize = 16*16
             threads = (16, 16)
-            nblocks = self.grid_dim*self.grid_dim / bsize
+            nboxes = self.grid_dim*self.grid_dim 
+            nblocks = nboxes / bsize
             nblocks = ceil(sqrt(nblocks))
-            #print(f"need {nblocks} blocks")
             blocks = (nblocks, nblocks)
+            print(f"summarize, launching: {blocks} {threads}")
+            
             g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                         self.grid_dim, self.d_COMs)
             h_COMs = self.d_COMs.copy_to_host()
@@ -274,7 +283,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
         self.min_xy = bottom_left
 
-
     def __init_gpu_cells(self):
         #create the threads if we haven't
         if not self.gpu_cells_initd:
@@ -322,12 +330,17 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         # tell every cell to place the particle range they have into the grid
         self.call_method_all_cells("copy_in_place_particles_copy_out")
 
+        # I don't know why the copying in copy_in_place_particles_copy_out 
+        # is not working, so let's do it here
+        #for cell in self.gpu_cells.values():
+        #    self.particles[cell.start:cell.end] = strd(cell.host_particles, copy=False)
+
         # sort host particles array, marking ranges of each group of cells
         # there is a way of doing this without a sort, just gotta figure it out.
         # because we are scanning, might as well have ranges for each grid
         # TODO: something better
-        self.particles.sort(order=('gx', 'gy'), axis=0)
         logging.debug(f"host particles after place/sort:\n{self.particles}")
+        self.particles.sort(order=('gx', 'gy'), axis=0)
 
         # map every box in the grid to a slice of the particles array since it is sorted
         self.grid_ranges = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int)
@@ -336,8 +349,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         cnt = 0
         for i in range(len(self.particles)):
             current_box = self.particles[i][['gx', 'gy']]
-            #print(f"current: {current_box}   prev: {prev_box}")
-            #print(f"start  {start}   end  {start+cnt}")
+            print(f"current: {current_box}   prev: {prev_box}")
+            print(f"start  {start}   end  {start+cnt}")
             if current_box != prev_box or i == len(self.particles)-1:
                 x, y = int(prev_box[0]), int(prev_box[1])
                 if i == len(self.particles)-1:
@@ -354,10 +367,15 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         for i, box_range in enumerate(np.array_split(all_boxes, self.ngpus)):
             start_box = box_range[0]
             end_box = box_range[-1]
+            
+            print(f"start / end: {start_box}  {end_box}")
+            print(f"grid_ranges {self.grid_ranges}")
             x,y = start_box
             start_p = self.grid_ranges[x,y][0]
             x,y = end_box
             end_p = self.grid_ranges[x,y][1]
+            print(f"start_p {start_p}  end_p {end_p}")
+
             logging.debug(f"slice of gpu {i}: {start_p}-{end_p}")
             self.gpu_cells[i].set_grid_cells(box_range)
             self.gpu_cells[i].set_particle_range(start_p, end_p)

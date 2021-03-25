@@ -15,9 +15,8 @@ _gx, _gy = 7, 8
 
 @cuda.jit(device=True)
 def copy_point(src, src_idx, dest, dest_idx):
-    #print(f"srcidx {src_idx}  dest_idx {dest_idx}")
     for i in range(9):
-        dest[dest_idx][i] = src[src_idx][i] 
+        dest[dest_idx][i] = src[src_idx][i]
 
 #TODO: check orientation of ndarray, we might have to transpose for performance
 @cuda.jit
@@ -46,10 +45,11 @@ def g_place_particles(particles, min_xy, step, grid_dim, grid_box_count):
         x = int(particles[pidx, _gx])
         y = int(particles[pidx, _gy])
 
+        #print(f"grid: {grid_dim}  {particles[pidx, _gx]}/{particles[pidx, _gy]}  = {x}/{y}")
+
         # add 1 to the index x,y
         if not CUDA_DEBUG:
             cuda.atomic.add(grid_box_count, (x,y), 1)
-            #print("grid ", x, " ", y, " = ", old)
         else:
             old = cuda.atomic.add(grid_box_count, (x,y), 1)
             print("grid {}/{} = {}".format(x, y, old))
@@ -114,22 +114,21 @@ def g_summarize(particles, grid_box_cumm, grid_dim, COMs):
     Launch one thread per box in the grid.
     """
     my_x, my_y = cuda.grid(2)
-    #print("x, y " , my_x, " ", my_y)
 
+    print(f"x,y {my_x} {my_y}")
     if my_x < grid_dim and my_y < grid_dim:
         start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
         end = grid_box_cumm[my_x, my_y]
         COMs[my_x][my_y][0] = 0
         COMs[my_x][my_y][1] = 0
         COMs[my_x][my_y][2] = 0
-        #print("start/end ", start," ", end)
-        if start != end:  #requred for multi gpu
-        
+        print("start/end ", start," ", end)
+        if start != end:  #requred for multi gpu        
             M = .0
             acc_x = .0
             acc_y = .0
 
-            #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
+            print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
             for i in range(start, end):
                 px = particles[i, _px]
                 py = particles[i, _py]
@@ -272,7 +271,7 @@ def g_recalculate_box_cumm(particles, grid_box_cumm, grid_dim):
             cuda.atomic.add(grid_box_cumm, (x,y), 1)
         else:
             old = cuda.atomic.add(grid_box_cumm, (x,y), 1)
-            print("grid {}/{} = {}".format(x, y, old))
+            print("recalc grid {}/{} = {}".format(x, y, old))
         
         # go around
         pidx += tsize
