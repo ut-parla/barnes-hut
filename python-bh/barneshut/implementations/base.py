@@ -3,7 +3,8 @@ from numpy.lib.recfunctions import structured_to_unstructured as unst
 import random
 import logging
 from timer import Timer
-from barneshut.internals.particle import Particle, particle_type
+import barneshut.internals.particle as p
+
 from barneshut.internals import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 
@@ -26,11 +27,11 @@ class BaseBarnesHut:
         """
         with open(filename) as fp:
             self.n_particles = int(fp.readline())
-            self.particles = np.empty((self.n_particles,), dtype=particle_type)
+            self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
 
             # read all lines, one particle per line
             for i in range(self.n_particles):
-                self.particles[i] = Particle.particle_from_line(fp.readline())
+                self.particles[i] = p.Particle.particle_from_line(fp.readline())
 
     def create_tree(self):
         """Each implementation must have it's own create_tree"""
@@ -193,7 +194,9 @@ class BaseBarnesHut:
 
     def set_particles_bounding_box(self):
         # get square bounding box around all particles
-        unstr_points = unst(self.particles[['px', 'py']], copy=False)
+        #unstr_points = unst(self.particles[['px', 'py']], copy=False)
+        
+        unstr_points = self.particles[:,p.px:p.py+1]
         bb_min, bb_max = get_bounding_box(unstr_points)
         bottom_left = np.array(bb_min)
         top_right = np.array(bb_max)

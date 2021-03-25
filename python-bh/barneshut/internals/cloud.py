@@ -1,8 +1,8 @@
 import numpy as np
 import logging
-from numpy.lib.recfunctions import structured_to_unstructured as unst
-from .particle import particle_type
 from .config import Config
+
+import barneshut.internals.particle as p
 
 class Cloud:
     
@@ -11,7 +11,7 @@ class Cloud:
         self.COM = None
         self.n = 0        
         if pre_alloc is not None:
-            self.__particles = np.empty((pre_alloc+1,), dtype=particle_type)
+            self.__particles = np.empty((pre_alloc+1,p.nfields), dtype=p.ftype)
         else:
             self.__particles = None
         
@@ -40,31 +40,31 @@ class Cloud:
 
     @property
     def positions(self):
-        return unst(self.__particles, copy=False)[:self.n,:2]
+        return self.__particles[:self.n, p.px:p.py+1]
         
     @positions.setter
     def positions(self, pos):
-        unst(self.__particles, copy=False)[:self.n,:2] = pos
+        self.__particles[:self.n, p.px:p.py+1] = pos
 
     @property
     def velocities(self):
-        return unst(self.__particles, copy=False)[:self.n,3:5]
+        return self.__particles[:self.n, p.vx:p.vy+1]
 
     @positions.setter
     def velocities(self, v):
-        unst(self.__particles, copy=False)[:self.n,3:5] = v
-        
+        self.__particles[:self.n, p.vx:p.vy+1] = v
+
     @property
     def masses(self):
-        return unst(self.__particles, copy=False)[:self.n,2:3]
-    
+        return self.__particles[:self.n, p.mass:p.mass+1]
+
     @property
     def accelerations(self):
-        return unst(self.__particles, copy=False)[:self.n,5:7]
+        return self.__particles[:self.n, p.ax:p.ay+1]
 
     @accelerations.setter
     def accelerations(self, acc):
-        unst(self.__particles, copy=False)[:self.n,5:7] = acc
+        self.__particles[:self.n, p.ax:p.ay+1] = acc
 
     def is_empty(self):
         return self.n == 0
@@ -79,7 +79,7 @@ class Cloud:
     def add_particle(self, p):
         # TODO: maybe add a decorator for this check
         if self.__particles is None:
-            self.__particles = np.empty((self.max_particles+1,), dtype=particle_type)
+            self.__particles = np.empty((self.max_particles+1,p.nfields), dtype=p.ftype)
 
         self.__particles[self.n] = p
         self.n += 1
@@ -94,16 +94,18 @@ class Cloud:
             self.COM = Cloud(self.grav_kernel, pre_alloc=1)
             # if we have no particle, COM is all zeros
             if self.is_empty():
-                data = (0,) * 9
+                data = (0,) * p.nfields
             else:
                 # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
                 M = np.sum(self.masses)
-                coords = np.multiply(self.positions, self.masses)
+                #coords = np.multiply(self.positions, self.masses)
+                coords = self.positions * self.masses
+
                 coords = np.add.reduce(coords)
                 coords /= M
                 data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
-            p = np.array(data, dtype=particle_type)
-            self.COM.add_particle(p)
+            point = np.array(data, dtype=p.ftype)
+            self.COM.add_particle(point)
 
         return self.COM
 

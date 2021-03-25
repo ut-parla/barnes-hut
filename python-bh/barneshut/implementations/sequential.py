@@ -7,7 +7,7 @@ from numpy import sqrt
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from timer import Timer
 from .base import BaseBarnesHut
-
+import barneshut.internals.particle as p
 
 class SequentialBarnesHut (BaseBarnesHut):
     """ Sequential implementation of nbody. Currently not Barnes-hut but
@@ -73,25 +73,26 @@ class SequentialBarnesHut (BaseBarnesHut):
         # if we are checking accuracy, we need to save how we sorted particles.
         # performance doesn't matter, so do the easy way
         if self.checking_accuracy:
-            self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
+            #self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
+            self.particles_argsort = np.argsort(self.particles.view(p.fieldsstr), order=(p.gxf, p.gyf), axis=0)
 
-        # sort by grid position
-        self.particles.sort(order=('gx', 'gy'), axis=0)
-        up = unst(self.particles)
+        self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
+
         # TODO: change from unique to a manual O(n) scan, we can do it
-        coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
+        coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
         coords = coords.astype(int)
         ncoords = len(coords)
         added = 0
 
         for i in range(ncoords):
-            x,y = coords[i]
+            x,y = np.clip(coords[i], 0, self.grid_dim-1)
             start = lens[i]
             # if last, get remaining
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
 
             added += end-start
             logging.debug(f"adding {end-start} particles to box {x}/{y}")
+
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
         logging.debug(f"added {added} total particles")
