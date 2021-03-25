@@ -4,7 +4,6 @@ from barneshut.grid_decomposition import Box
 from barneshut.internals.config import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 from numpy import sqrt
-from numpy.lib.recfunctions import structured_to_unstructured as unst
 from timer import Timer
 from .base import BaseBarnesHut
 import barneshut.internals.particle as p
@@ -50,15 +49,6 @@ class SequentialBarnesHut (BaseBarnesHut):
                 #logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
             self.grid.append(row)
 
-    def get_particles(self, sample_indices=None):
-        if sample_indices is None:
-            return self.particles
-        else:
-            samples = {}
-            for i in sample_indices:
-                samples[i] = self.particles[i].copy()
-            return samples
-
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -74,9 +64,9 @@ class SequentialBarnesHut (BaseBarnesHut):
         # performance doesn't matter, so do the easy way
         if self.checking_accuracy:
             #self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
-            self.particles_argsort = np.argsort(self.particles.view(p.fieldsstr), order=(p.gxf, p.gyf), axis=0)
+            self.particles_argsort = np.argsort(self.particles.view(p.fieldsstr), order=[p.gxf, p.gyf], axis=0).squeeze(axis=1)
 
-        self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
 
         # TODO: change from unique to a manual O(n) scan, we can do it
         coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
@@ -118,3 +108,12 @@ class SequentialBarnesHut (BaseBarnesHut):
         if self.checking_accuracy:
             self.particles = self.particles[np.argsort(self.particles_argsort)]
             self.particles_argsort = None
+
+    def get_particles(self, sample_indices=None):
+        if sample_indices is None:
+            return self.particles
+        else:
+            samples = {}
+            for i in sample_indices:
+                samples[i] = self.particles[i]
+            return samples

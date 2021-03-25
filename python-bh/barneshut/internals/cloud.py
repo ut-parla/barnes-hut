@@ -115,7 +115,9 @@ class Cloud:
         tick = float(Config.get("bh", "tick_seconds"))
         self.velocities += self.accelerations * tick
         self.accelerations[:,:] = 0.0               
+        #logging.debug(f"changing position of particle from {self.positions} to {self.positions + self.velocities * tick}")
         self.positions += self.velocities * tick
+
 
     def apply_force(self, other_cloud, update_other=False):
         self.grav_kernel(self, other_cloud, self.G, update_other)

@@ -130,8 +130,8 @@ class BaseBarnesHut:
         # copy sampled particles so we can modify them
         for i in sample_indices:
             samples[i] = particles[i].copy()
-            samples[i]['ax'] = 0
-            samples[i]['ay'] = 0
+            samples[i][p.ax] = 0
+            samples[i][p.ay] = 0
 
         G = float(Config.get("bh", "grav_constant"))
         # for each particle, do the n^2 algorithm
@@ -140,28 +140,29 @@ class BaseBarnesHut:
                 # skip self to self
                 if i == j:
                     continue
-                p1_p    = unst(samples[i][['px', 'py']])
-                p1_mass = unst(samples[i][['mass']])
-                p2_p    = unst(particles[j][['px', 'py']])
-                p2_mass = unst(particles[j][['mass']])
+                p1_p = samples[i][p.px:p.py+1]
+                p1_mass = samples[i][p.mass]
+                p2_p    = particles[j][p.px:p.py+1]
+                p2_mass = particles[j][p.mass]
                 dif = p1_p - p2_p
                 dist = np.sqrt(np.sum(np.square(dif)))
                 f = (G * p1_mass * p2_mass) / (dist*dist)
 
-                samples[i]['ax'] -= f * dif[0] / p1_mass
-                samples[i]['ay'] -= f * dif[1] / p1_mass
+                samples[i][p.ax] -= f * dif[0] / p1_mass
+                samples[i][p.ay] -= f * dif[1] / p1_mass
 
-            logging.debug(f"n^2 algo for particle {i}: {samples[i]['ax']}/{samples[i]['ay']}")
+            logging.debug(f"n^2 algo for particle {i}: {samples[i][p.ax]}/{samples[i][p.ay]}")
 
         tick = float(Config.get("bh", "tick_seconds"))
         for i in sample_indices:
 
-            samples[i]['vx'] += samples[i]['ax'] * tick
-            samples[i]['vy'] += samples[i]['ay'] * tick
-            samples[i]['ax'] = 0.0
-            samples[i]['ay'] = 0.0
-            samples[i]['px'] += samples[i]['vx'] * tick
-            samples[i]['py'] += samples[i]['vy'] * tick
+            logging.debug(f"sample {i}, changing px from {samples[i][p.vx]} to {samples[i][p.vx]+samples[i][p.ax] * tick}")
+            samples[i][p.vx] += samples[i][p.ax] * tick
+            samples[i][p.vy] += samples[i][p.ay] * tick
+            samples[i][p.ax] = 0.0
+            samples[i][p.ay] = 0.0
+            samples[i][p.px] += samples[i][p.vx] * tick
+            samples[i][p.py] += samples[i][p.vy] * tick
         return samples
 
     def check_accuracy(self, sample_indices, nsquared_sample):
@@ -172,8 +173,8 @@ class BaseBarnesHut:
         impl_sample = self.get_particles(sample_indices)
         cum_err = np.zeros(2)
         for i in sample_indices:
-            nsq = unst(nsquared_sample[i][['px', 'py']])
-            a2 = unst(impl_sample[i][['px', 'py']])
+            nsq = nsquared_sample[i][p.px:p.py+1]
+            a2 = impl_sample[i][p.px:p.py+1]
             
             diff = np.fabs(nsq - a2) / nsq
 
@@ -186,7 +187,6 @@ class BaseBarnesHut:
         cum_err /= float(self.sample_size)
         err = ", ".join([str(x) for x in cum_err])
         print(f"avg relative error across {self.sample_size} points: {err}")
-
 
     #
     # Some common helper methods

@@ -112,7 +112,7 @@ def __evaluate_com_concat_dedup(grid):
             if grid[x][y].cloud.is_empty():
                 continue
             boxes.append(grid[x][y])
-            logging.debug(f"Cell {n} is neighbor, direct interaction")
+            #logging.debug(f"Cell {n} is neighbor, direct interaction")
         
         # now we have to do cell <-> box in boxes 
         x,y = cell

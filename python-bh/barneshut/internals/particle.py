@@ -7,10 +7,9 @@ ax, ay = 5, 6
 gx, gy = 7, 8
 
 gxf, gyf = 'f7', 'f8'
-
+massf = 'f2'
 nfields = 9
 fieldsstr = 'f8,f8,f8,f8,f8,f8,f8,f8,f8'
-
 ftype = np.float64
 
 # structured arrays was likely a bad choice.. it seems random

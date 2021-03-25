@@ -1,9 +1,9 @@
 import numpy as np
-from numpy.lib.recfunctions import structured_to_unstructured as unst
 from parla import Parla
 from parla.cpu import *
 from parla.tasks import *
 from .base import BaseBarnesHut
+import barneshut.internals.particle as p
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square, get_neighbor_cells,remove_bottom_left_neighbors
@@ -79,43 +79,25 @@ class ParlaBarnesHut (BaseBarnesHut):
         slices = ceil(self.n_particles / ppt)
         logging.debug(f"Launching {slices} parla tasks to calculate particle placement.")
 
+        #print("before ", self.particles)
         placement_TS = TaskSpace("particle_placement")
         for i, pslice in enumerate(np.array_split(self.particles, slices)):
             @spawn(placement_TS[i])
             def particle_placement_task():
-                # TODO: remove hardcoded indices someday..
-                pslice[['gx','gy']] = pslice[['px','py']]
-                unst(pslice, copy=False)[:, 7:9] = (unst(pslice, copy=False)[:, 7:9] - self.min_xy) / self.step
-                unst(pslice, copy=False)[:, 7:9] = np.clip(unst(pslice, copy=False)[:, 7:9], 0, self.grid_dim-1)
+                pslice[:, p.gx:p.gy+1] = pslice[:, p.px:p.py+1]
+                pslice[:, p.gx:p.gy+1] = (pslice[:, p.gx:p.gy+1] - self.min_xy) / self.step
+                pslice[:, p.gx:p.gy+1] = np.floor(pslice[:, p.gx:p.gy+1])
 
         await placement_TS
-        
+        #print("after ", self.particles)
+
         # if we are checking accuracy, we need to save how we sorted particles.
         # performance doesn't matter, so do the easy way
         if self.checking_accuracy:
-            self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
+            self.particles_argsort = np.argsort(self.particles.view(p.fieldsstr), order=[p.gxf, p.gyf], axis=0).squeeze(axis=1)
 
-        print("argsort  ", self.particles_argsort)
-
-        self.particles.sort(order=('gx', 'gy'), axis=0)
-        # below is same from sequential
-        # TODO: change from unique to a manual O(n) scan, might be faster
-        up = unst(self.particles)
-        coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
-        coords = coords.astype(int)
-        ncoords = len(coords)
-        added = 0
-        for i in range(ncoords):
-            x,y = coords[i]
-            start = lens[i]
-            # if last, get remaining
-            end = lens[i+1] if i < ncoords-1 else len(self.particles)
-            added += end-start
-            logging.debug(f"adding {end-start} particles to box {x}/{y}")
-            self.grid[x][y].add_particle_slice(self.particles[start:end])
-        logging.debug(f"added {added} total particles")
-        assert added == len(self.particles)
-
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
+    
     async def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -125,21 +107,18 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         await self.parla_place_particles()
 
-        # sort by grid position
-        up = unst(self.particles)
-        coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
+        coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
         coords = coords.astype(int)
         ncoords = len(coords)
         added = 0
 
         for i in range(ncoords):
-            x,y = coords[i]
+            x,y = np.clip(coords[i], 0, self.grid_dim-1)
             start = lens[i]
             # if last, get remaining
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
-
             added += end-start
-            logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
         logging.debug(f"added {added} total particles")
@@ -177,7 +156,6 @@ class ParlaBarnesHut (BaseBarnesHut):
                     if box.cloud.is_empty():
                         continue
 
-                    print(f"box_xy  {box_xy}")
                     neighbors = get_neighbor_cells(tuple(box_xy), self.grid_dim)
                     boxes = []
                     com_cells = []

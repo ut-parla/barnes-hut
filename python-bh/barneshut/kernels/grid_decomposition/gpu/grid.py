@@ -115,20 +115,19 @@ def g_summarize(particles, grid_box_cumm, grid_dim, COMs):
     """
     my_x, my_y = cuda.grid(2)
 
-    print(f"x,y {my_x} {my_y}")
+    #print(f"x,y {my_x} {my_y}")
     if my_x < grid_dim and my_y < grid_dim:
         start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
         end = grid_box_cumm[my_x, my_y]
         COMs[my_x][my_y][0] = 0
         COMs[my_x][my_y][1] = 0
         COMs[my_x][my_y][2] = 0
-        print("start/end ", start," ", end)
         if start != end:  #requred for multi gpu        
             M = .0
             acc_x = .0
             acc_y = .0
 
-            print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
+            #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
             for i in range(start, end):
                 px = particles[i, _px]
                 py = particles[i, _py]
@@ -346,7 +345,6 @@ def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neigh
                 # not neighbor, use COM
                 else:
                     d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
-
 
 @cuda.jit
 def g_tick_particles(particles, tick):

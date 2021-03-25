@@ -21,7 +21,7 @@ class Box:
         b.cloud = Cloud(grav_kernel, pre_alloc=len(boxes))
         b.is_COMs = is_COMs
 
-        logging.debug(f"concatenating {len(boxes)} boxes")
+        #logging.debug(f"concatenating {len(boxes)} boxes")
         for box in boxes:
             b.cloud.add_particles(box.get_COM().particles)
         return b
