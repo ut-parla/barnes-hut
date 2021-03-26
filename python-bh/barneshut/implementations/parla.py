@@ -118,7 +118,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             # if last, get remaining
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
             added += end-start
-            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            logging.debug(f"adding {end-start} particles to box {x}/{y}")
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
         logging.debug(f"added {added} total particles")
@@ -180,10 +180,12 @@ class ParlaBarnesHut (BaseBarnesHut):
                         # now we have to do cell <-> box in boxes 
                         self_box = self.grid[x][y]
                         for box in boxes:
-                            self_box.apply_force(box)
+                            self_box.apply_force(box, requires_lock=False)
 
                         # we also need to interact with ourself
-                        self_box.apply_force(self_box)
+                        self_box.apply_force(self_box, requires_lock=False)
+
+        await eval_TS
 
         # if checking accuracy, unsort the particles
         if self.checking_accuracy:

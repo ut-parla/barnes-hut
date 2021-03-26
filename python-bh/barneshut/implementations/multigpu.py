@@ -2,15 +2,13 @@ import logging
 import numpy as np
 from barneshut.internals.config import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square, get_neighbor_cells
-from numpy.lib.recfunctions import structured_to_unstructured as unst
-from numpy.lib.recfunctions import unstructured_to_structured as strd
 from math import sqrt, ceil
 from numba import cuda
 import threading, queue
 from .base import BaseBarnesHut
 from functools import wraps
 from itertools import product
-from barneshut.internals.particle import particle_type
+import barneshut.internals.particle as p
 
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
@@ -44,8 +42,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
     class GPUCell:
         def __init__(self, resident_gpu, host_particles):
             self.resident_gpu = resident_gpu
-            self.str_host_particles = host_particles
-            self.host_particles = unst(host_particles, copy=False)
+            self.host_particles = host_particles
             self.debug = logging.root.level == logging.DEBUG
             self.queue = queue.Queue()
             self.done_event = threading.Event()
@@ -135,19 +132,17 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             # WHYYYY doesnt this wooooork...
             # memory goes BOOM now :(
             #d_particles_sort.copy_to_host( unst(self.str_host_particles, copy=False)[self.start:self.end] )
-            x = d_particles_sort.copy_to_host()
-            self.str_host_particles[self.start:self.end] = strd(x, copy=False, dtype=particle_type)
+            d_particles_sort.copy_to_host(self.host_particles[self.start:self.end])
             self.d_particles = d_particles_sort
 
         @notify_when_done
         def copy_particle_range_to_device(self):
             try:
-                self.d_particles.copy_to_device(
-                    unst(self.str_host_particles, copy=False)[self.start:self.end])
+                self.d_particles.copy_to_device(self.host_particles[self.start:self.end])
                 logging.debug(f"GPU {self.resident_gpu}: copied our slice directly to preallocated darray")
             except:
                 logging.debug(f"GPU {self.resident_gpu}: couldn't copy directly, need to realocate")
-                self.d_particles = cuda.to_device(unst(self.str_host_particles, copy=False)[self.start:self.end])
+                self.d_particles = cuda.to_device(self.host_particles[self.start:self.end])
 
         @notify_when_done
         def summarize_and_collect(self, host_COMs, lock):
@@ -246,42 +241,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
             threads = THREADS_PER_BLOCK
             tick = float(Config.get("bh", "tick_seconds"))
-            g_tick_particles[blocks, threads](self.d_particles, tick)
-
-
-    def __create_grid(self):
-        """Figure out the grid dimension and points.
-        This function sets:
-        self.grid_dim
-        self.step
-        self.min_xy
-        """
-        # get square bounding box around all particles
-        unstr_points = unst(self.particles[['px', 'py']], copy=False)
-        bb_min, bb_max = get_bounding_box(unstr_points)
-        bottom_left = np.array(bb_min)
-        top_right = np.array(bb_max)
-
-        # if more than one particle per leaf, let's assume an occupancy of
-        # 80% (arbitrary number), because if we use 100% we might have leaves
-        # with >particles_per_leaf particles. This is all assuming a normal
-        # random distribution.
-        if self.particles_per_leaf == 1:
-            nleaves = self.particles_per_leaf
-        else:
-            n = len(self.particles)
-            nleaves = n / (LEAF_OCCUPANCY * self.particles_per_leaf)
-
-        # find next perfect square
-        nleaves = next_perfect_square(nleaves)
-        self.grid_dim = int(sqrt(nleaves))
-        logging.debug(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
-                we need {nleaves} leaves, whose next perfect square is {self.grid_dim}.
-                Grid will be {self.grid_dim}x{self.grid_dim}''')
-        
-        # create grid matrix
-        self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
-        self.min_xy = bottom_left
+            #g_tick_particles[blocks, threads](self.d_particles, tick)
 
     def __init_gpu_cells(self):
         #create the threads if we haven't
@@ -309,7 +269,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
         """
-        self.__create_grid()
+        self.set_particles_bounding_box() 
         # we now have access to: self.grid_dim, self.step and self.min_xy
         
         #initialize (once) our cells, one per GPU
@@ -340,18 +300,19 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         # because we are scanning, might as well have ranges for each grid
         # TODO: something better
         logging.debug(f"host particles after place/sort:\n{self.particles}")
-        self.particles.sort(order=('gx', 'gy'), axis=0)
+        #self.particles.sort(order=('gx', 'gy'), axis=0)
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
 
         # map every box in the grid to a slice of the particles array since it is sorted
         self.grid_ranges = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int)
-        prev_box = self.particles[0][['gx', 'gy']]
+        prev_box = self.particles[0, p.gx:p.gy+1]
         start = 0
         cnt = 0
         for i in range(len(self.particles)):
-            current_box = self.particles[i][['gx', 'gy']]
-            print(f"current: {current_box}   prev: {prev_box}")
-            print(f"start  {start}   end  {start+cnt}")
-            if current_box != prev_box or i == len(self.particles)-1:
+            current_box = self.particles[i, p.gx:p.gy+1]
+            #print(f"current: {current_box}   prev: {prev_box}")
+            #print(f"start  {start}   end  {start+cnt}")
+            if tuple(current_box) != tuple(prev_box) or i == len(self.particles)-1:
                 x, y = int(prev_box[0]), int(prev_box[1])
                 if i == len(self.particles)-1:
                     cnt += 1
@@ -368,13 +329,13 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             start_box = box_range[0]
             end_box = box_range[-1]
             
-            print(f"start / end: {start_box}  {end_box}")
-            print(f"grid_ranges {self.grid_ranges}")
+            #print(f"start / end: {start_box}  {end_box}")
+            #print(f"grid_ranges {self.grid_ranges}")
             x,y = start_box
             start_p = self.grid_ranges[x,y][0]
             x,y = end_box
             end_p = self.grid_ranges[x,y][1]
-            print(f"start_p {start_p}  end_p {end_p}")
+            #print(f"start_p {start_p}  end_p {end_p}")
 
             logging.debug(f"slice of gpu {i}: {start_p}-{end_p}")
             self.gpu_cells[i].set_grid_cells(box_range)
@@ -423,10 +384,10 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             positions. This assumes that masses are unique, which they probably aren't,
             so unless things are somehow stable, we might see different errors each run.
             """
-            self.d_particles.copy_to_host(unst(self.particles))
+            self.particles = self.d_particles.copy_to_host()
             would_sort = np.argsort(self.ordered_masses)
             undo_sort = np.argsort(would_sort)
-            would_sort_particles = np.argsort(self.particles, order=('mass'), axis=0)
+            would_sort_particles = np.argsort(self.particles.view(p.fieldsstr), order=[p.massf], axis=0).squeeze(axis=1)
             self.particles = self.particles[would_sort_particles][undo_sort]
 
     def cleanup(self):

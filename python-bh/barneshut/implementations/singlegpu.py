@@ -24,7 +24,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.grid = None
         self.G = float(Config.get("bh", "grav_constant"))
         self.device_arrays_initd = False
-
         self.debug = logging.root.level == logging.DEBUG
         
     def __init_device_arrays(self):
@@ -71,9 +70,9 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         if self.debug:
             parts = self.d_particles_sort.copy_to_host()
-            logging.debug("Got particles from device, here are the first 10:")
-            for i in range(10):
-                logging.debug(f"    {parts[i]}")
+            #logging.debug("Got particles from device, here are the first 10:")
+            #for i in range(10):
+            #    logging.debug(f"    {parts[i]}")
 
     def summarize(self):
         bsize = 16*16
@@ -98,14 +97,13 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
         threads = THREADS_PER_BLOCK
 
-        x = self.d_particles.copy_to_host()
+        #x = self.d_particles.copy_to_host()
 
         g_tick_particles[blocks, threads](self.d_particles, tick)
 
-        y = self.d_particles.copy_to_host()
-
-        print("before:  ", x)
-        print("after   ", y)
+        #y = self.d_particles.copy_to_host()
+        #print("before:  ", x)
+        #print("after   ", y)
 
         # if checking accuracy, we need to copy it back to host
         if self.checking_accuracy:
@@ -119,7 +117,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             positions. This assumes that masses are unique, which they probably aren't,
             so unless things are somehow stable, we might see different errors each run.
             """
-            self.d_particles.copy_to_host(self.particles)
+            self.particles = self.d_particles.copy_to_host()
             would_sort = np.argsort(self.ordered_masses)
             undo_sort = np.argsort(would_sort)
             would_sort_particles = np.argsort(self.particles.view(p.fieldsstr), order=[p.massf], axis=0).squeeze(axis=1)
@@ -130,6 +128,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             return self.particles
         else:
             samples = {}
+            print("\n\nyes.. ", sample_indices)
             for i in sample_indices:
                 samples[i] = self.particles[i].copy()
+                print(f"pi {i}  ", self.particles[i])
             return samples

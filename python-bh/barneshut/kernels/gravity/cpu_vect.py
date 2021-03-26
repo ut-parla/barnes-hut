@@ -1,30 +1,36 @@
 import numpy as np
-from numpy.linalg import norm
 from barneshut.internals import Cloud
+from numba import njit
+import barneshut.internals.particle as p
 
 # calculations below are from this source:
 # https://stackoverflow.com/questions/52562117/efficiently-compute-n-body-gravitation-in-python
 
 # this is what is called from __init__.py
 def get_kernel_function():
-    return cpu_vect_kernel
+    return cpu_vect
 
-# TODO:  compute self interactions: if self_cloud is other_cloud
+def cpu_vect(self_cloud, other_cloud, G, update_other=False):
+    cpu_vect_kernel(self_cloud.particles, other_cloud.particles, G, 1.0 if update_other else 0.0)
 
-def cpu_vect_kernel(self_cloud, other_cloud, G):
+@njit("(float64[:, :], float64[:, :], float64, float64)", fastmath=True)
+def cpu_vect_kernel(self_cloud, other_cloud, G, update_other):
     # get positions and masses of concatenation
-    cc = Cloud.concatenation(self_cloud, other_cloud) 
-    masses = cc.masses
-    positions = cc.positions
+    for i1, p1 in enumerate(self_cloud):
+        for i2, p2 in enumerate(other_cloud):
+            p1_p    = p1[p.px:p.py+1]
+            p1_mass = p1[p.mass]
+            p2_p    = p2[p.px:p.py+1]
+            p2_mass = p2[p.mass]
+            dif = p1_p - p2_p
+            dist = np.sqrt(np.sum(np.square(dif)))
+            if dist == 0:
+                continue
+            f = (G * p1_mass * p2_mass) / (dist*dist)
 
-    # actual calculation
-    mass_matrix = masses.reshape((1, -1, 1))*masses.reshape((-1, 1, 1))
-    disps = positions.reshape((1, -1, 2)) - positions.reshape((-1, 1, 2)) # displacements
-    dists = norm(disps, axis=2)
-    dists[dists == 0] = 1 # Avoid divide by zero warnings
-    forces = G*disps*mass_matrix/np.expand_dims(dists, 2)**2
-    acc = forces.sum(axis=1)/masses.reshape(-1, 1)
+            self_cloud[i1][p.ax] -= f * dif[0] / p1_mass
+            self_cloud[i1][p.ay] -= f * dif[1] / p1_mass
 
-    # add accelerations
-    self_cloud.accelerations  += acc[:self_cloud.n,:]
-    other_cloud.accelerations += acc[self_cloud.n:,:]
+            if update_other > 0:
+                other_cloud[i2][p.ax] -= f * dif[0] / p1_mass
+                other_cloud[i2][p.ay] -= f * dif[1] / p1_mass

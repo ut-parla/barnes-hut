@@ -357,10 +357,8 @@ def g_tick_particles(particles, tick):
     while pidx < n_particles:
         particles[pidx, _vx] += particles[pidx, _ax] * tick
         particles[pidx, _vy] += particles[pidx, _ay] * tick
-
         particles[pidx, _ax] = 0
         particles[pidx, _ay] = 0
-
         particles[pidx, _px] += particles[pidx, _vx] * tick
         particles[pidx, _py] += particles[pidx, _vy] * tick
 

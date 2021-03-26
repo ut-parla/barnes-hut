@@ -20,6 +20,11 @@ class BaseBarnesHut:
         self.sample_size = int(Config.get("general", "sample_check_size"))
         self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
 
+        self.skip_timestep = bool(Config.get("general", "skip_timestep")) 
+        self.evaluation_rounds = int(Config.get("general", "evaluation_rounds")) 
+
+        logging.debug(f"Skiping timestep? {self.skip_timestep}")
+
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
         from file. The order of things depends on how it was generated,
@@ -78,16 +83,19 @@ class BaseBarnesHut:
                     self.summarize()
 
                 # Step 3: evaluate.
-                with Timer.get_handle("evaluation"):
-                    self.evaluate()
+                for _ in range(self.evaluation_rounds):
+                    with Timer.get_handle("evaluation"):
+                        self.evaluate()
 
-                # Step 4: tick particles using timestep
-                with Timer.get_handle("timestep"):
-                    self.timestep()
+                if not self.skip_timestep:
+                    # Step 4: tick particles using timestep
+                    with Timer.get_handle("timestep"):
+                        self.timestep()
 
                 # At this point the implementation executed the algorithm, so we
                 # get the results and compare to ours
                 if self.checking_accuracy:
+                    self.ensure_particles_id_ordered()
                     self.check_accuracy(sample_indices, nsquared_sample)
 
         Timer.print()
@@ -140,7 +148,7 @@ class BaseBarnesHut:
                 # skip self to self
                 if i == j:
                     continue
-                p1_p = samples[i][p.px:p.py+1]
+                p1_p    = samples[i][p.px:p.py+1]
                 p1_mass = samples[i][p.mass]
                 p2_p    = particles[j][p.px:p.py+1]
                 p2_mass = particles[j][p.mass]
@@ -153,16 +161,16 @@ class BaseBarnesHut:
 
             logging.debug(f"n^2 algo for particle {i}: {samples[i][p.ax]}/{samples[i][p.ay]}")
 
-        tick = float(Config.get("bh", "tick_seconds"))
-        for i in sample_indices:
-
-            logging.debug(f"sample {i}, changing px from {samples[i][p.vx]} to {samples[i][p.vx]+samples[i][p.ax] * tick}")
-            samples[i][p.vx] += samples[i][p.ax] * tick
-            samples[i][p.vy] += samples[i][p.ay] * tick
-            samples[i][p.ax] = 0.0
-            samples[i][p.ay] = 0.0
-            samples[i][p.px] += samples[i][p.vx] * tick
-            samples[i][p.py] += samples[i][p.vy] * tick
+        # we are comparing acceleration, so we dont need this
+        # tick = float(Config.get("bh", "tick_seconds"))
+        # for i in sample_indices:
+        #     logging.debug(f"sample {i}, changing px from {samples[i][p.vx]} to {samples[i][p.vx]+samples[i][p.ax] * tick}")
+        #     samples[i][p.vx] += samples[i][p.ax] * tick
+        #     samples[i][p.vy] += samples[i][p.ay] * tick
+        #     samples[i][p.ax] = 0.0
+        #     samples[i][p.ay] = 0.0
+        #     samples[i][p.px] += samples[i][p.vx] * tick
+        #     samples[i][p.py] += samples[i][p.vy] * tick
         return samples
 
     def check_accuracy(self, sample_indices, nsquared_sample):
@@ -173,20 +181,19 @@ class BaseBarnesHut:
         impl_sample = self.get_particles(sample_indices)
         cum_err = np.zeros(2)
         for i in sample_indices:
-            nsq = nsquared_sample[i][p.px:p.py+1]
-            a2 = impl_sample[i][p.px:p.py+1]
+            nsq = nsquared_sample[i][p.ax:p.ay+1]
+            aprox = impl_sample[i][p.ax:p.ay+1]
             
-            diff = np.fabs(nsq - a2) / nsq
+            rel_err = np.fabs(nsq - aprox) / nsq
 
             logging.debug(f"nsquared p{i} : {nsq}")
-            logging.debug(f"impl     p{i} : {a2}")
-            logging.debug(f"diff on point {i}:  {np.fabs(nsq - a2) / nsq}")
-            logging.debug(f"relative err:  {diff}")
-            cum_err += diff
+            logging.debug(f"impl     p{i} : {aprox}")
+            logging.debug(f"relative err:  {rel_err}")
+            cum_err += rel_err
 
         cum_err /= float(self.sample_size)
         err = ", ".join([str(x) for x in cum_err])
-        print(f"avg relative error across {self.sample_size} points: {err}")
+        print(f"avg relative {self.sample_size} points on each axis:\n\t{err}")
 
     #
     # Some common helper methods

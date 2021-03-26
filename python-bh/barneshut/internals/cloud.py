@@ -1,7 +1,7 @@
 import numpy as np
 import logging
+import threading
 from .config import Config
-
 import barneshut.internals.particle as p
 
 class Cloud:
@@ -14,14 +14,13 @@ class Cloud:
             self.__particles = np.empty((pre_alloc+1,p.nfields), dtype=p.ftype)
         else:
             self.__particles = None
-        
+        self.lock = threading.Lock()
         self.G = float(Config.get("bh", "grav_constant"))
         # Set our kernels
         self.grav_kernel = grav_kernel
 
     #
     # Factories
-    #
     @staticmethod
     def concatenation(cloud1, cloud2):
         c = Cloud(self.grav_kernel, pre_alloc=cloud1.n + cloud2.n)
@@ -33,7 +32,6 @@ class Cloud:
 
     #
     # general getter/setters
-    #
     @property
     def particles(self):
         return self.__particles[:self.n]
@@ -103,7 +101,8 @@ class Cloud:
 
                 coords = np.add.reduce(coords)
                 coords /= M
-                data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
+                #data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
+                data = [coords[0], coords[1], M] + [.0] * (p.nfields-3)
             point = np.array(data, dtype=p.ftype)
             self.COM.add_particle(point)
 
@@ -114,11 +113,31 @@ class Cloud:
             return
         tick = float(Config.get("bh", "tick_seconds"))
         self.velocities += self.accelerations * tick
-        self.accelerations[:,:] = 0.0               
-        #logging.debug(f"changing position of particle from {self.positions} to {self.positions + self.velocities * tick}")
+        self.accelerations = 0.0               
+        #logging.debug(f"changing position of particle from {self.positions[:3]}\nto {self.positions[:3]+self.velocities[:3] * tick}")
         self.positions += self.velocities * tick
+    
+    def apply_force(self, other_cloud, update_other=False, requires_lock=False):
+        if requires_lock:
+            ready = False
+            while not ready:
+                # first let's acquire our lock
+                self.lock.acquire(blocking=True)
+                # if we only need ourselves, we are done
+                if not update_other:
+                    ready = True
 
-
-    def apply_force(self, other_cloud, update_other=False):
+                # if we need, let's try to acquire the other
+                else:
+                    l2 = other_cloud.lock.acquire(blocking=False)
+                    if l2:  # we got it
+                        ready = True
+                    else:  # we didn't make it, so release ours
+                        self.lock.release()
+                
         self.grav_kernel(self, other_cloud, self.G, update_other)
     
+        if requires_lock:
+            self.lock.release()
+            if update_other:
+                other_cloud.lock.release()

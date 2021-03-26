@@ -17,7 +17,6 @@ class SequentialBarnesHut (BaseBarnesHut):
         what else we need."""
         super().__init__()
         self.grid = None
-        self.particles_argsort = None
 
         # setup functions
         from barneshut.kernels.grid_decomposition.sequential.grid import \
@@ -60,15 +59,9 @@ class SequentialBarnesHut (BaseBarnesHut):
         # grid placements sets gx, gy to their correct place in the grid
         self.particles = self.__grid_placement(self.particles, self.min_xy, self.step, self.grid_dim)
 
-        # if we are checking accuracy, we need to save how we sorted particles.
-        # performance doesn't matter, so do the easy way
-        if self.checking_accuracy:
-            #self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
-            self.particles_argsort = np.argsort(self.particles.view(p.fieldsstr), order=[p.gxf, p.gyf], axis=0).squeeze(axis=1)
-
+        # sort particles by grid position
         self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
 
-        # TODO: change from unique to a manual O(n) scan, we can do it
         coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
         coords = coords.astype(int)
         ncoords = len(coords)
@@ -81,11 +74,11 @@ class SequentialBarnesHut (BaseBarnesHut):
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
 
             added += end-start
-            logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
 
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
-        logging.debug(f"added {added} total particles")
+        #logging.debug(f"added {added} total particles")
         assert added == len(self.particles)
 
     def summarize(self):
@@ -97,6 +90,8 @@ class SequentialBarnesHut (BaseBarnesHut):
     def evaluate(self):
         self.__evaluate(self.grid)
 
+        print("after ", self.particles[:, p.ax:p.ay+1])
+
     def timestep(self):
         n = len(self.grid)
         for i in range(n):
@@ -104,10 +99,11 @@ class SequentialBarnesHut (BaseBarnesHut):
                 if not self.grid[i][j].cloud.is_empty():
                     self.grid[i][j].tick()
 
-        # if checking accuracy, unsort the particles
-        if self.checking_accuracy:
-            self.particles = self.particles[np.argsort(self.particles_argsort)]
-            self.particles_argsort = None
+    def ensure_particles_id_ordered(self):
+        # just sort by id since they were shuffled
+        self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
+
+        print("sort ", self.particles[:, p.ax:p.ay+1])
 
     def get_particles(self, sample_indices=None):
         if sample_indices is None:
