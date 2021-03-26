@@ -45,12 +45,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.set_particles_bounding_box()        
         self.__init_device_arrays()
 
-        # store the masses so we can unshuffle later, check timestep function.
-        if self.checking_accuracy:
-            self.ordered_masses = self.particles[:, p.mass].copy()
-
         self.d_particles_sort = cuda.device_array_like(self.particles)
-
         # copy a zero'd out matrix
         zz = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int32)
         self.d_grid_box_count = cuda.to_device(zz)
@@ -68,12 +63,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.d_particles = self.d_particles_sort
         self.d_grid_box_count = None
 
-        if self.debug:
-            parts = self.d_particles_sort.copy_to_host()
-            #logging.debug("Got particles from device, here are the first 10:")
-            #for i in range(10):
-            #    logging.debug(f"    {parts[i]}")
-
     def summarize(self):
         bsize = 16*16
         threads = (16, 16)
@@ -90,38 +79,24 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         blocks = (self.grid_dim*self.grid_dim, yblocks)
         threads = min(THREADS_PER_BLOCK, self.n_particles)
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
+
+        if self.debug:
+            print("before ",  self.d_particles.copy_to_host()[:, p.ax:p.ay+1] )
+
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
+
+        if self.debug:
+            print("after ",  self.d_particles.copy_to_host()[:, p.ax:p.ay+1] )
 
     def timestep(self):
         tick = float(Config.get("bh", "tick_seconds"))
         blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
         threads = THREADS_PER_BLOCK
-
-        #x = self.d_particles.copy_to_host()
-
         g_tick_particles[blocks, threads](self.d_particles, tick)
 
-        #y = self.d_particles.copy_to_host()
-        #print("before:  ", x)
-        #print("after   ", y)
-
-        # if checking accuracy, we need to copy it back to host
-        if self.checking_accuracy:
-            """Alright, fasten your seatbelts, this is some ugly
-            research code.
-            We first argsort the unshuffled particle masses, then argsort that
-            array, which is needed to undo a sort, similar to what we do in the
-            sequential check.
-            Then, when we get the shuffled array from the GPU we argsort it
-            and use the previous undo argsort to shuffle it back to the original
-            positions. This assumes that masses are unique, which they probably aren't,
-            so unless things are somehow stable, we might see different errors each run.
-            """
-            self.particles = self.d_particles.copy_to_host()
-            would_sort = np.argsort(self.ordered_masses)
-            undo_sort = np.argsort(would_sort)
-            would_sort_particles = np.argsort(self.particles.view(p.fieldsstr), order=[p.massf], axis=0).squeeze(axis=1)
-            self.particles = self.particles[would_sort_particles][undo_sort]
+    def ensure_particles_id_ordered(self):
+        self.d_particles.copy_to_host(self.particles)
+        self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def get_particles(self, sample_indices=None):
         if sample_indices is None:

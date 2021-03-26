@@ -184,7 +184,7 @@ class BaseBarnesHut:
             nsq = nsquared_sample[i][p.ax:p.ay+1]
             aprox = impl_sample[i][p.ax:p.ay+1]
             
-            rel_err = np.fabs(nsq - aprox) / nsq
+            rel_err = np.fabs((nsq - aprox) / nsq)
 
             logging.debug(f"nsquared p{i} : {nsq}")
             logging.debug(f"impl     p{i} : {aprox}")
