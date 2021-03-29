@@ -275,10 +275,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         #initialize (once) our cells, one per GPU
         self.__init_gpu_cells()
 
-        # store the masses so we can unshuffle later, check timestep function.
-        if self.checking_accuracy:
-            self.ordered_masses = self.particles['mass']
-
         #split particle array in equal parts
         logging.debug("Splitting particle array into chunks:")
         acc = 0
@@ -389,6 +385,10 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             undo_sort = np.argsort(would_sort)
             would_sort_particles = np.argsort(self.particles.view(p.fieldsstr), order=[p.massf], axis=0).squeeze(axis=1)
             self.particles = self.particles[would_sort_particles][undo_sort]
+
+    def ensure_particles_id_ordered(self):
+        self.d_particles.copy_to_host(self.particles)
+        self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def cleanup(self):
         logging.debug("Terminating threads...")

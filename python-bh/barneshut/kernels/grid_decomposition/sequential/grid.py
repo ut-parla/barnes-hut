@@ -22,7 +22,7 @@ def get_grid_placements_numpy(particles, min_xy, step, grid_dim):
     """
     particles[:, p.gx:p.gy+1] = particles[:, p.px:p.py+1]
     particles[:, p.gx:p.gy+1] = (particles[:, p.gx:p.gy+1] - min_xy) / step
-    particles[:, p.gx:p.gy+1] = np.floor(particles[:, p.gx:p.gy+1])
+    particles[:, p.gx:p.gy+1] = np.clip(np.floor(particles[:, p.gx:p.gy+1]), 0, grid_dim-1)
 
     return particles
 

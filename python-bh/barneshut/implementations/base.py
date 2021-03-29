@@ -4,7 +4,7 @@ import random
 import logging
 from timer import Timer
 import barneshut.internals.particle as p
-
+from barneshut.grid_decomposition import Box
 from barneshut.internals import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 
@@ -184,6 +184,10 @@ class BaseBarnesHut:
             nsq = nsquared_sample[i][p.ax:p.ay+1]
             aprox = impl_sample[i][p.ax:p.ay+1]
             
+            id1 = nsquared_sample[i][p.pid]
+            id2 = impl_sample[i][p.pid]
+            assert id1 == id2
+
             rel_err = np.fabs((nsq - aprox) / nsq)
 
             logging.debug(f"nsquared p{i} : {nsq}")
@@ -203,8 +207,7 @@ class BaseBarnesHut:
         # get square bounding box around all particles
         #unstr_points = unst(self.particles[['px', 'py']], copy=False)
         
-        unstr_points = self.particles[:,p.px:p.py+1]
-        bb_min, bb_max = get_bounding_box(unstr_points)
+        bb_min, bb_max = get_bounding_box(self.particles[:,p.px:p.py+1])
         bottom_left = np.array(bb_min)
         top_right = np.array(bb_max)
 
@@ -229,3 +232,21 @@ class BaseBarnesHut:
         self.step = (top_right[0] - bottom_left[0]) / self.grid_dim 
         self.min_xy = bottom_left
         self.max_xy = top_right
+
+    def create_grid_boxes(self):
+        """Use bounding boxes coordinates, create the grid
+        matrix and their boxes
+        """
+        # x and y have the same edge length, so get x length
+        step = (self.max_xy[0]-self.min_xy[0]) / self.grid_dim
+        # create grid as a matrix, starting from bottom left
+        self.grid = []
+        logging.debug(f"Grid: {self.min_xy}, {self.max_xy}")
+        for i in range(self.grid_dim):
+            row = []
+            for j in range(self.grid_dim):
+                x = self.min_xy[0] + (i*step)
+                y = self.min_xy[1] + (j*step)
+                row.append(Box((x,y), (x+step, y+step), grav_kernel=self.grav_kernel))
+                #logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
+            self.grid.append(row)

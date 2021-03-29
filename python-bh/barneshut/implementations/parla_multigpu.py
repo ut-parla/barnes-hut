@@ -1,9 +1,9 @@
 import numpy as np
+from numpy.lib.recfunctions import structured_to_unstructured as unst
 from parla import Parla
 from parla.cpu import *
 from parla.tasks import *
 from .base import BaseBarnesHut
-import barneshut.internals.particle as p
 from barneshut.internals.config import Config
 from barneshut.grid_decomposition import Box
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square, get_neighbor_cells,remove_bottom_left_neighbors
@@ -13,13 +13,14 @@ from math import ceil
 from itertools import product
 
 
-class ParlaBarnesHut (BaseBarnesHut):
+class ParlaMultiGPUBarnesHut (BaseBarnesHut):
 
     def __init__(self):
         """Our parent will init `self.particles = []` only, we need to do 
         what else we need."""
         super().__init__()
         self.grid = None
+        self.particles_argsort = None
  
         from barneshut.kernels.gravity import get_gravity_kernel
         self.grav_kernel = get_gravity_kernel()
@@ -37,6 +38,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             self.checking_accuracy = check_accuracy
             if self.checking_accuracy:
                 sample_indices = self.generate_sample_indices()
+            
             with Timer.get_handle("end-to-end"):
                 for _ in range(n_iterations):
                     if self.checking_accuracy:
@@ -45,14 +47,11 @@ class ParlaBarnesHut (BaseBarnesHut):
                         await self.create_tree()
                     with Timer.get_handle("summarization"):
                         await self.summarize()
-                    for _ in range(self.evaluation_rounds):
-                        with Timer.get_handle("evaluation"):
-                            await self.evaluate()
-                    if not self.skip_timestep:
-                        with Timer.get_handle("timestep"):
-                            await self.timestep()
+                    with Timer.get_handle("evaluation"):
+                        await self.evaluate()
+                    with Timer.get_handle("timestep"):
+                        await self.timestep()
                     if self.checking_accuracy:
-                        self.ensure_particles_id_ordered()
                         self.check_accuracy(sample_indices, nsquared_sample)
             Timer.print()
             self.cleanup()
@@ -62,20 +61,43 @@ class ParlaBarnesHut (BaseBarnesHut):
         slices = ceil(self.n_particles / ppt)
         logging.debug(f"Launching {slices} parla tasks to calculate particle placement.")
 
-        #print("before ", self.particles)
         placement_TS = TaskSpace("particle_placement")
         for i, pslice in enumerate(np.array_split(self.particles, slices)):
             @spawn(placement_TS[i])
             def particle_placement_task():
-                pslice[:, p.gx:p.gy+1] = pslice[:, p.px:p.py+1]
-                pslice[:, p.gx:p.gy+1] = (pslice[:, p.gx:p.gy+1] - self.min_xy) / self.step
-                pslice[:, p.gx:p.gy+1] = np.floor(pslice[:, p.gx:p.gy+1])
+                # TODO: remove hardcoded indices someday..
+                pslice[['gx','gy']] = pslice[['px','py']]
+                unst(pslice, copy=False)[:, 7:9] = (unst(pslice, copy=False)[:, 7:9] - self.min_xy) / self.step
+                unst(pslice, copy=False)[:, 7:9] = np.clip(unst(pslice, copy=False)[:, 7:9], 0, self.grid_dim-1)
 
         await placement_TS
-        #print("after ", self.particles)
+        
+        # if we are checking accuracy, we need to save how we sorted particles.
+        # performance doesn't matter, so do the easy way
+        if self.checking_accuracy:
+            self.particles_argsort = np.argsort(self.particles, order=('gx', 'gy'), axis=0)
 
-        self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
-    
+        print("argsort  ", self.particles_argsort)
+
+        self.particles.sort(order=('gx', 'gy'), axis=0)
+        # below is same from sequential
+        # TODO: change from unique to a manual O(n) scan, might be faster
+        up = unst(self.particles)
+        coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
+        coords = coords.astype(int)
+        ncoords = len(coords)
+        added = 0
+        for i in range(ncoords):
+            x,y = coords[i]
+            start = lens[i]
+            # if last, get remaining
+            end = lens[i+1] if i < ncoords-1 else len(self.particles)
+            added += end-start
+            logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            self.grid[x][y].add_particle_slice(self.particles[start:end])
+        logging.debug(f"added {added} total particles")
+        assert added == len(self.particles)
+
     async def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -85,21 +107,24 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         await self.parla_place_particles()
 
-        coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
+        # sort by grid position
+        up = unst(self.particles)
+        coords, lens = np.unique(up[:, 7:9], return_index=True, axis=0)
         coords = coords.astype(int)
         ncoords = len(coords)
         added = 0
 
         for i in range(ncoords):
-            x,y = np.clip(coords[i], 0, self.grid_dim-1)
+            x,y = coords[i]
             start = lens[i]
             # if last, get remaining
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
+
             added += end-start
-            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            logging.debug(f"adding {end-start} particles to box {x}/{y}")
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
-        #logging.debug(f"added {added} total particles")
+        logging.debug(f"added {added} total particles")
         assert added == len(self.particles)
 
     async def summarize(self):
@@ -121,12 +146,9 @@ class ParlaBarnesHut (BaseBarnesHut):
     async def evaluate(self):
         bpt = int(Config.get("parla", "eval_boxes_per_task"))
         slices = ceil((self.grid_dim * self.grid_dim) / bpt)
-        logging.debug(f"Launching {slices} parla tasks to evaluate.")
+        logging.debug(f"Launching {slices} parla tasks to build COMs concatenations.")
         all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
         eval_TS = TaskSpace("evaluate")
-
-        #boxes are inbalanced, so lets shuffle them
-        np.random.shuffle(all_boxes)
 
         for i, box_range in enumerate(np.array_split(all_boxes, slices)):
             @spawn(eval_TS[i])
@@ -137,13 +159,12 @@ class ParlaBarnesHut (BaseBarnesHut):
                     if box.cloud.is_empty():
                         continue
 
+                    print(f"box_xy  {box_xy}")
                     neighbors = get_neighbor_cells(tuple(box_xy), self.grid_dim)
                     boxes = []
                     com_cells = []
                     for otherbox_xy in product(range(self.grid_dim), range(self.grid_dim)):
                         ox, oy = otherbox_xy
-                        if x == ox and y == oy:
-                            continue
                         if self.grid[ox][oy].cloud.is_empty():
                             continue
                         if otherbox_xy not in neighbors:
@@ -160,15 +181,18 @@ class ParlaBarnesHut (BaseBarnesHut):
                             continue
                         boxes.append(self.grid[ox][oy])
             
-                    # now we have to do cell <-> box in boxes 
-                    self_box = self.grid[x][y]
-                    for box in boxes:
-                        self_box.apply_force(box, requires_lock=True)
+                        # now we have to do cell <-> box in boxes 
+                        self_box = self.grid[x][y]
+                        for box in boxes:
+                            self_box.apply_force(box)
 
-                    # we also need to interact with ourself
-                    self_box.apply_force(self_box, requires_lock=True)
+                        # we also need to interact with ourself
+                        self_box.apply_force(self_box)
 
-        await eval_TS
+        # if checking accuracy, unsort the particles
+        if self.checking_accuracy:
+            self.particles = self.particles[np.argsort(self.particles_argsort)]
+            self.particles_argsort = None
 
     async def timestep(self):
         bpt = int(Config.get("parla", "timestep_boxes_per_task"))
@@ -185,10 +209,6 @@ class ParlaBarnesHut (BaseBarnesHut):
                     self.grid[x][y].tick()
 
         await timestep_TS
-
-    def ensure_particles_id_ordered(self):
-        # just sort by id since they were shuffled
-        self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def get_particles(self, sample_indices=None):
          if sample_indices is None:

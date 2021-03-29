@@ -5,7 +5,7 @@ mass = 2
 vx, vy = 3, 4
 ax, ay = 5, 6
 gx, gy = 7, 8
-id = 9
+pid = 9
 
 gxf, gyf = 'f7', 'f8'
 massf = 'f2'

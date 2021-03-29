@@ -16,12 +16,15 @@ def get_bounding_box(points):
     min_x, min_y = np.min(points, axis=0)[:2]
 
     x_edge, y_edge = max_x - min_x, max_y - min_y 
-    if x_edge >= y_edge:
+    if x_edge > y_edge:
         max_y += (x_edge - y_edge)
-    else:
+    elif y_edge > x_edge:
         max_x += (y_edge - x_edge)
 
-    assert (max_x-min_x)==(max_y-min_y)
+    print(f"{min_x}-{max_x}   {min_y}-{max_y} ")
+
+    #they are somewhat equal
+    assert (max_x-min_x)-(max_y-min_y) < 0.00001
     return (min_x, min_y), (max_x, max_y)
 
 def get_neighbor_cells(point, grid_dim):

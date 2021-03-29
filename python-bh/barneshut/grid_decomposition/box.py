@@ -41,8 +41,5 @@ class Box:
     def get_COM(self):
         return self.cloud.get_COM()
 
-    def apply_force(self, other_box, requires_lock=False):
-        # don't update other box if both are the same box or if
-        # other is a list of COMs
-        update_other = self is not other_box and not other_box.is_COMs
-        self.cloud.apply_force(other_box.cloud, update_other)
+    def apply_force(self, other_box, update_other=False, requires_lock=False):
+        self.cloud.apply_force(other_box.cloud, update_other, requires_lock)

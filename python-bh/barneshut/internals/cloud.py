@@ -24,10 +24,10 @@ class Cloud:
     @staticmethod
     def concatenation(cloud1, cloud2):
         c = Cloud(self.grav_kernel, pre_alloc=cloud1.n + cloud2.n)
-        for p in cloud1.particles:
-            c.add_particle(p)   
-        for p in cloud2.particles:
-            c.add_particle(p)  
+        for pt in cloud1.particles:
+            c.add_particle(pt)   
+        for pt in cloud2.particles:
+            c.add_particle(pt)  
         return c
 
     #
@@ -117,7 +117,7 @@ class Cloud:
         #logging.debug(f"changing position of particle from {self.positions[:3]}\nto {self.positions[:3]+self.velocities[:3] * tick}")
         self.positions += self.velocities * tick
     
-    def apply_force(self, other_cloud, update_other=False, requires_lock=False):
+    def apply_force(self, other_cloud, update_other, requires_lock=False):
         if requires_lock:
             ready = False
             while not ready:

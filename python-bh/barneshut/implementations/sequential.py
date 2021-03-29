@@ -28,25 +28,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.__evaluate = get_evaluation_fn()
         
         from barneshut.kernels.gravity import get_gravity_kernel
-        self.__grav_kernel = get_gravity_kernel()
-
-    def create_grid_boxes(self):
-        """Use bounding boxes coordinates, create the grid
-        matrix and their boxes
-        """
-        # x and y have the same edge length, so get x length
-        step = (self.max_xy[0]-self.min_xy[0]) / self.grid_dim
-        # create grid as a matrix, starting from bottom left
-        self.grid = []
-        logging.debug(f"Grid: {self.min_xy}, {self.max_xy}")
-        for i in range(self.grid_dim):
-            row = []
-            for j in range(self.grid_dim):
-                x = self.min_xy[0] + (i*step)
-                y = self.min_xy[1] + (j*step)
-                row.append(Box((x,y), (x+step, y+step), grav_kernel=self.__grav_kernel))
-                #logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
-            self.grid.append(row)
+        self.grav_kernel = get_gravity_kernel()
 
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
@@ -74,11 +56,14 @@ class SequentialBarnesHut (BaseBarnesHut):
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
 
             added += end-start
-            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
+            logging.debug(f"adding {end-start} particles to box {x}/{y}")
 
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
-        #logging.debug(f"added {added} total particles")
+            #comment this
+            for pt in self.particles[start:end]:
+                assert pt[p.gx] == x and pt[p.gy] == y
+
         assert added == len(self.particles)
 
     def summarize(self):
@@ -87,10 +72,8 @@ class SequentialBarnesHut (BaseBarnesHut):
             for j in range(n):
                 self.grid[i][j].get_COM()
 
-    def evaluate(self):
+    def evaluate(self):   
         self.__evaluate(self.grid)
-
-        print("after ", self.particles[:, p.ax:p.ay+1])
 
     def timestep(self):
         n = len(self.grid)
@@ -102,8 +85,6 @@ class SequentialBarnesHut (BaseBarnesHut):
     def ensure_particles_id_ordered(self):
         # just sort by id since they were shuffled
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
-
-        print("sort ", self.particles[:, p.ax:p.ay+1])
 
     def get_particles(self, sample_indices=None):
         if sample_indices is None:

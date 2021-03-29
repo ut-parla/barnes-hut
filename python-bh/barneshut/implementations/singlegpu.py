@@ -75,18 +75,15 @@ class SingleGPUBarnesHut (BaseBarnesHut):
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
         # the boxes into the x axis, and use the y axis to have more than 1024 threads 
+
+        # how many blocs we need to cover all particles
         yblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
+        #one block per box
         blocks = (self.grid_dim*self.grid_dim, yblocks)
         threads = min(THREADS_PER_BLOCK, self.n_particles)
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
 
-        if self.debug:
-            print("before ",  self.d_particles.copy_to_host()[:, p.ax:p.ay+1] )
-
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
-
-        if self.debug:
-            print("after ",  self.d_particles.copy_to_host()[:, p.ax:p.ay+1] )
 
     def timestep(self):
         tick = float(Config.get("bh", "tick_seconds"))
@@ -103,8 +100,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             return self.particles
         else:
             samples = {}
-            print("\n\nyes.. ", sample_indices)
             for i in sample_indices:
                 samples[i] = self.particles[i].copy()
-                print(f"pi {i}  ", self.particles[i])
             return samples

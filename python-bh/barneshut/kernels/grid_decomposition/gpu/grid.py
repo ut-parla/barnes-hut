@@ -1,6 +1,7 @@
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from numba import cuda, float64
 from math import floor, fabs
+import barneshut.internals.particle as p
 
 CUDA_DEBUG = False
 
@@ -15,7 +16,7 @@ _gx, _gy = 7, 8
 
 @cuda.jit(device=True)
 def copy_point(src, src_idx, dest, dest_idx):
-    for i in range(9):
+    for i in range(p.nfields):
         dest[dest_idx][i] = src[src_idx][i]
 
 #TODO: check orientation of ndarray, we might have to transpose for performance
@@ -38,6 +39,9 @@ def g_place_particles(particles, min_xy, step, grid_dim, grid_box_count):
     # find where each particle belongs in the grid
     pidx = tid
     while pidx < n_particles:
+        # lets zero acceleration here
+        #particles[pidx, _ax] = .0
+        #particles[pidx, _ay] = .0
         particles[pidx, _gx] = (particles[pidx, _px] - min_x) / step
         particles[pidx, _gx] = min(floor(particles[pidx, _gx]), grid_dim-1)
         particles[pidx, _gy] = (particles[pidx, _py] - min_y) / step
@@ -153,12 +157,12 @@ def d_is_neighbor(gx, gy, gx2, gy2):
 
 @cuda.jit(device=True)
 def d_self_self_grav(particles, start, end, G):    
-    n = end-start
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
+    tid = cuda.threadIdx.x
     pid = start+tid
+    n = end-start
 
-    # we are particle tid
     if tid < n:
+        # we are particle tid
         my_x = particles[pid, _px]
         my_y = particles[pid, _py]
         my_mass = particles[pid, _mas]
@@ -173,12 +177,13 @@ def d_self_self_grav(particles, start, end, G):
                 particles[pid, _ax] -= (f * xdif / my_mass)
                 particles[pid, _ay] -= (f * ydif / my_mass)
 
+        #print("particle ", pid, " axy ", " ",particles[pid, _ax],"  ", particles[pid, _ay])
+
 @cuda.jit(device=True)
 def d_self_other_grav(particles, start, end, other_start, other_end, G):
-    n = end-start
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
-    # offset our id so we get particles between [start,end)
+    tid = cuda.threadIdx.x
     pid = start+tid
+    n = end-start
 
     # we are particle tid
     if tid < n:
@@ -196,10 +201,9 @@ def d_self_other_grav(particles, start, end, other_start, other_end, G):
 
 @cuda.jit(device=True)
 def d_self_COM_grav(particles, start, end, COMs, cx, cy, G):
-    n = end-start
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
-    # offset our id so we get particles between [start,end)
+    tid = cuda.threadIdx.x
     pid = start+tid
+    n = end-start
 
     # we are particle tid
     if tid < n:
@@ -223,14 +227,15 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     """
     my_y = int(cuda.blockIdx.x / grid_dim)
     my_x = cuda.blockIdx.x - (my_y*grid_dim)
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
-    #print("grix {}/{}  tid{}".format(my_x, my_y, tid))
     start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
     end = grid_box_cumm[my_x, my_y]
     n = end-start
+    tid = cuda.threadIdx.x
 
+    #print("grid ", my_x, " ", my_y, " n ", n,  " particle ", tid, " is a go.  bi/bw/idx ", cuda.blockIdx.y, " ", cuda.blockDim.y, " ", cuda.threadIdx.y)
     #if my_x == 0 and my_y == 0:
     if tid < n:
+
         for gx in range(grid_dim): 
             for gy in range(grid_dim):
                 # self to self
@@ -288,7 +293,7 @@ def g_recalculate_box_cumm(particles, grid_box_cumm, grid_dim):
 @cuda.jit(device=True)
 def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G):
     n = end-start
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
+    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.y
     # offset our id so we get particles between [start,end)
     pid = start+tid
 
@@ -316,7 +321,7 @@ def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neigh
     my_y = cells[cell_idx][0]
     my_x = cells[cell_idx][1]
 
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.x
+    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.y
     
     start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
     end = grid_box_cumm[my_x, my_y]

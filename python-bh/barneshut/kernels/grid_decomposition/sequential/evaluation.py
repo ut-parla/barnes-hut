@@ -45,35 +45,33 @@ def __evaluate_com_concat(grid):
     n = len(grid)
     # for every box in the grid
     for cell in product(range(n), range(n)):
+        x,y = cell
+        # if box is empty, just skip it
+        if grid[x][y].cloud.is_empty():
+            print(f"grid {x}/{y} is empty..")
+            continue
+
+        self_leaf = grid[x][y]
         neighbors = get_neighbor_cells(cell, len(grid))
-        all_cells = product(range(n), range(n))
-        
-        boxes = []
         com_cells = []
-        for c in all_cells:
+        for c in product(range(n), range(n)):
             # for cells that are not neighbors, we need to aggregate COMs into a fake Box
-            x,y = c
+            x2,y2 = c
+            if grid[x2][y2].cloud.is_empty() or (x==x2 and y==y2):
+                continue
             if c not in neighbors:
-                com_cells.append(grid[x][y])
+                com_cells.append(grid[x2][y2])
                 #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
             # for neighbors, store them so we can do direct interaction
             else:
-                boxes.append(grid[x][y])
-                #logging.debug(f"Cell {c} is neighbor, direct interaction")
-        
+                print(f"direct interaction of {x}/{y}  -> {x2}/{y2}")
+                self_leaf.apply_force(grid[x2][y2], update_other=False)
+                
         coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
-        logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
-                should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
-        boxes.append(coms)
-
-        # now we have to do cell <-> box in boxes 
-        x,y = cell
-        self_leaf = grid[x][y]
-        for box in boxes:
-            self_leaf.apply_force(box)
+        self_leaf.apply_force(coms, update_other=False)
 
         # we also need to interact with ourself
-        self_leaf.apply_force(self_leaf)
+        self_leaf.apply_force(self_leaf,  update_other=False)
 
 
 def __evaluate_com_concat_dedup(grid):
@@ -83,42 +81,33 @@ def __evaluate_com_concat_dedup(grid):
         x,y = cell
         # if box is empty, just skip it
         if grid[x][y].cloud.is_empty():
+            print(f"grid {x}/{y} is empty..")
             continue
-
+        self_leaf = grid[x][y]
         neighbors = get_neighbor_cells(cell, len(grid))
-        all_cells = product(range(n), range(n))
         
-        boxes = []
         com_cells = []
-        for c in all_cells:
+        for c in product(range(n), range(n)):
             # for cells that are not neighbors, we need to aggregate COMs into a fake Box
-            x,y = c
+            x2,y2 = c
             # if box is empty, just skip it
-            if grid[x][y].cloud.is_empty():
+            if grid[x2][y2].cloud.is_empty() or (x==x2 and y==y2):
                 continue
-
             if c not in neighbors:
-                com_cells.append(grid[x][y])
-                #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
+                com_cells.append(grid[x2][y2])
         coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
-        logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
-                should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
-        boxes.append(coms)
+        #logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
+        #        should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
+        self_leaf.apply_force(coms, update_other=False)
 
         # remove boxes that already computed their force to us (this function modifies neighbors list)
         for c in remove_bottom_left_neighbors(cell, neighbors):
-            x,y = c
+            x2,y2 = c
+            print(f"direct interaction of {x}/{y}  -> {x2}/{y2}")
             # if box is empty, just skip it
-            if grid[x][y].cloud.is_empty():
+            if grid[x2][y2].cloud.is_empty():
                 continue
-            boxes.append(grid[x][y])
-            #logging.debug(f"Cell {n} is neighbor, direct interaction")
-        
-        # now we have to do cell <-> box in boxes 
-        x,y = cell
-        self_leaf = grid[x][y]
-        for box in boxes:
-            self_leaf.apply_force(box)
+            self_leaf.apply_force(grid[x2][y2], update_other=True)
 
         # we also need to interact with ourself
-        self_leaf.apply_force(self_leaf)
+        self_leaf.apply_force(self_leaf, update_other=False)
