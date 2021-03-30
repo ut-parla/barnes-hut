@@ -41,7 +41,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 for _ in range(n_iterations):
                     if self.checking_accuracy:
                         nsquared_sample = self.preround_accuracy_check(sample_indices)
-                    with Timer.get_handle("tree-creation"):
+                    with Timer.get_handle("grid_creation"):
                         await self.create_tree()
                     with Timer.get_handle("summarization"):
                         await self.summarize()
@@ -73,7 +73,7 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         await placement_TS
 
-        self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
+        self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0, kind="stable")
     
     async def create_tree(self):
         """We're not creating an actual tree, just grouping particles 

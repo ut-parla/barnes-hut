@@ -292,7 +292,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         # because we are scanning, might as well have ranges for each grid
         # TODO: something better
         # logging.debug(f"host particles after place/sort:\n{self.particles}")
-        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
 
         # map every box in the grid to a slice of the particles array since it is sorted
         self.grid_ranges = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int)
@@ -365,6 +365,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def cleanup(self):
+        super().cleanup()
         logging.debug("Terminating threads...")
         self.call_method_all_cells("terminate")
         for cell in self.gpu_cells.values():

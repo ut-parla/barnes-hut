@@ -40,19 +40,12 @@ class TimerClass:
         print("*"*50)
         print("name, avg, stddev")
         for name, times in self.times.items():
-            #if there's more than one sample, ignore first
-            # TODO: make this a parameter? this is for ignoreing GPU compilation
-            if len(times) > 1:
-                pop = times[1:]
-            else:
-                pop = times
-            avg    = statistics.mean(pop)
-            stddev = statistics.pstdev(pop)
+            avg    = statistics.mean(times)
+            stddev = statistics.pstdev(times)
             print(f"{name}, {avg}, {stddev}")
         print("*"*50)
 
-    def reset_and_print(self):
-        self.print()
+    def reset(self):
         self.times = {}
 
 Timer = TimerClass()

@@ -4,7 +4,6 @@ from barneshut.grid_decomposition import Box
 from barneshut.internals.config import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 from numpy import sqrt
-from timer import Timer
 from .base import BaseBarnesHut
 import barneshut.internals.particle as p
 
@@ -27,9 +26,6 @@ class SequentialBarnesHut (BaseBarnesHut):
             get_evaluation_fn
         self.__evaluate = get_evaluation_fn()
         
-        from barneshut.kernels.gravity import get_gravity_kernel
-        self.grav_kernel = get_gravity_kernel()
-
     def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
@@ -42,7 +38,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.particles = self.__grid_placement(self.particles, self.min_xy, self.step, self.grid_dim)
 
         # sort particles by grid position
-        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
 
         coords, lens = np.unique(self.particles[:, p.gx:p.gy+1], return_index=True, axis=0)
         coords = coords.astype(int)
@@ -71,8 +67,7 @@ class SequentialBarnesHut (BaseBarnesHut):
         for i in range(n):
             for j in range(n):
                 self.grid[i][j].get_COM()
-
-                print(self.grid[i][j].get_COM().particles[:, p.px:p.mass+1])
+                #print(self.grid[i][j].get_COM().particles[:, p.px:p.mass+1])
 
     def evaluate(self):   
         self.__evaluate(self.grid)

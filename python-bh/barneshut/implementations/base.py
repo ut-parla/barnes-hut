@@ -58,10 +58,14 @@ class BaseBarnesHut:
         """In case we need to do cleanup after we run, override this."""
         pass
 
-    def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
+    def reset_timer(self):
+        Timer.reset()
+
+    def run(self, partitions=None, print_particles=False, check_accuracy=False):
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
         overloaded."""
+        n_iterations = int(Config.get("general", "rounds"))
         self.checking_accuracy = check_accuracy
 
         if self.checking_accuracy:
@@ -75,7 +79,7 @@ class BaseBarnesHut:
                     nsquared_sample = self.preround_accuracy_check(sample_indices)
 
                 # Step 1: create tree (if Barnes-Hut), group-by points by box (if Decomposition)
-                with Timer.get_handle("tree-creation"):
+                with Timer.get_handle("grid_creation"):
                     self.create_tree()
 
                 # Step 2: summarize.
@@ -98,7 +102,7 @@ class BaseBarnesHut:
                     self.ensure_particles_id_ordered()
                     self.check_accuracy(sample_indices, nsquared_sample)
 
-        Timer.print()
+        #Timer.print()
         self.cleanup()
 
     def print_particles(self):

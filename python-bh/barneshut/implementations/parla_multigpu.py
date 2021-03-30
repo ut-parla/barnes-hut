@@ -23,11 +23,6 @@ CPU = True
 
 class ParlaMultiGPUBarnesHut (BaseBarnesHut):
 
-    class NBodyTask:
-        def __init__(self):
-            self.particle_slice = None
-
-
     def __init__(self):
         """Our parent will init `self.particles = []` only, we need to do 
         what else we need."""
@@ -36,16 +31,17 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         self.grid_cumm = None
         self.ngpus = int(Config.get("parla", "gpus_available"))
 
-    def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
+    def run(self, partitions=None, print_particles=False, check_accuracy=False):
         with Parla():
             @spawn()
             async def main():
                 await self.run_bh(n_iterations, partitions, print_particles, check_accuracy)
 
-    async def run_bh(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
+    async def run_bh(self, partitions=None, print_particles=False, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
         with Parla():
+            n_iterations = int(Config.get("general", "rounds"))
             self.checking_accuracy = check_accuracy
             if self.checking_accuracy:
                 sample_indices = self.generate_sample_indices()
@@ -53,7 +49,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
                 for _ in range(n_iterations):
                     if self.checking_accuracy:
                         nsquared_sample = self.preround_accuracy_check(sample_indices)
-                    with Timer.get_handle("tree-creation"):
+                    with Timer.get_handle("grid_creation"):
                         await self.create_tree()
                     with Timer.get_handle("summarization"):
                         await self.summarize()
@@ -107,7 +103,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         post_placement_TS = TaskSpace("post_placement")
         @spawn(post_placement_TS[0], [placement_TS])
         def sort_grid_task():
-            self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
+            self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0, kind="stable")
             #print("sorted ", self.particles)
 
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)

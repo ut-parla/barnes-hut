@@ -21,26 +21,24 @@ parla_logger = logging.getLogger('parla')
 parla_logger.setLevel(logging.WARNING)
 
 # import entry point
+from timer import Timer
 from barneshut import BarnesHut
-
-def run(cfgfile, fname, nrounds, check):
-    # run the thingy
-    bh = BarnesHut(cfgfile)
-    bh.read_input_file(fname)
-    bh.run(nrounds, check_accuracy=check)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('input_file', help="Path to input file")
-    parser.add_argument('nrounds', help="Number of rounds to run", type=int)
+    parser.add_argument('nwarmups', help="How many runs to execute as warmup", type=int)
+    parser.add_argument('nruns', help="Number of different runs to execute", type=int)
     parser.add_argument('configfile', help="Path to config file")
     parser.add_argument('--debug', help="Turn debug on", action="store_true")
     parser.add_argument('--check', help="Check accuracy after every round", action="store_true")
     args = parser.parse_args()
 
+    nruns   = args.nruns
+    nwarmups= args.nwarmups
     fname   = args.input_file
-    nrounds = args.nrounds
     cfgfile = args.configfile
+    
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
     else:
@@ -48,4 +46,12 @@ if __name__ == "__main__":
 
     check = args.check
 
-    run(cfgfile, fname, nrounds, check)
+    bh = BarnesHut(cfgfile)
+    bh.read_input_file(fname)
+
+    for _ in range(nwarmups):
+        bh.run(check_accuracy=check)
+    Timer.reset()
+    for _ in range(nruns):
+        bh.run(check_accuracy=check)
+    Timer.print()
