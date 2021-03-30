@@ -160,6 +160,7 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
 
+    return my_particles
 
 @cuda.jit
 def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim, COMs, cn_ranges, cn_particles, G):

@@ -168,9 +168,16 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
 
         for i, box_range in enumerate(np.array_split(all_boxes, ntasks)):
             @spawn(eval_TS[i], placement=gpu(0))
-            def evaluate_task():                
+            def evaluate_task():
+                fb_x, fb_y = all_boxes[0]
+                lb_x, lb_y = all_boxes[-1]
+                start = self.grid_ranges[fb_x, fb_y, 0]
+                end = self.grid_ranges[lb_x, lb_y, 1]
+
                 # let's get all the neighbors we need
-                p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+
+                copy(self.particles[start:end], mod_particles[:])
 
         await eval_TS
         
