@@ -19,15 +19,10 @@ class Cloud:
         # Set our kernels
         self.grav_kernel = grav_kernel
 
-    #
-    # Factories
     @staticmethod
-    def concatenation(cloud1, cloud2):
-        c = Cloud(self.grav_kernel, pre_alloc=cloud1.n + cloud2.n)
-        for pt in cloud1.particles:
-            c.add_particle(pt)   
-        for pt in cloud2.particles:
-            c.add_particle(pt)  
+    def from_slice(pslice, grav_kernel):
+        c = Cloud(grav_kernel)
+        c.add_particle_slice(pslice)
         return c
 
     #
@@ -75,10 +70,8 @@ class Cloud:
             self.add_particle(p)
 
     def add_particle(self, p):
-        # TODO: maybe add a decorator for this check
         if self.__particles is None:
             self.__particles = np.empty((self.max_particles+1,p.nfields), dtype=p.ftype)
-
         self.__particles[self.n] = p
         self.n += 1
 
@@ -87,7 +80,6 @@ class Cloud:
         self.n = len(pslice)
 
     def get_COM(self):
-        # TODO: need a switch here to use different COM kernels
         if self.COM is None:
             self.COM = Cloud(self.grav_kernel, pre_alloc=1)
             # if we have no particle, COM is all zeros
@@ -96,12 +88,9 @@ class Cloud:
             else:
                 # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
                 M = np.sum(self.masses)
-                #coords = np.multiply(self.positions, self.masses)
                 coords = self.positions * self.masses
-
                 coords = np.add.reduce(coords)
                 coords /= M
-                #data = (coords[0], coords[1], M, .0, .0, .0, .0, .0, .0)
                 data = [coords[0], coords[1], M] + [.0] * (p.nfields-3)
             point = np.array(data, dtype=p.ftype)
             self.COM.add_particle(point)
@@ -117,27 +106,5 @@ class Cloud:
         #logging.debug(f"changing position of particle from {self.positions[:3]}\nto {self.positions[:3]+self.velocities[:3] * tick}")
         self.positions += self.velocities * tick
     
-    def apply_force(self, other_cloud, update_other, requires_lock=False):
-        if requires_lock:
-            ready = False
-            while not ready:
-                # first let's acquire our lock
-                self.lock.acquire(blocking=True)
-                # if we only need ourselves, we are done
-                if not update_other:
-                    ready = True
-
-                # if we need, let's try to acquire the other
-                else:
-                    l2 = other_cloud.lock.acquire(blocking=False)
-                    if l2:  # we got it
-                        ready = True
-                    else:  # we didn't make it, so release ours
-                        self.lock.release()
-                
+    def apply_force(self, other_cloud, update_other):
         self.grav_kernel(self, other_cloud, self.G, update_other)
-    
-        if requires_lock:
-            self.lock.release()
-            if update_other:
-                other_cloud.lock.release()

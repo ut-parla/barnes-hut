@@ -61,8 +61,8 @@ class SequentialBarnesHut (BaseBarnesHut):
             self.grid[x][y].add_particle_slice(self.particles[start:end])
 
             #comment this
-            for pt in self.particles[start:end]:
-                assert pt[p.gx] == x and pt[p.gy] == y
+            #for pt in self.particles[start:end]:
+            #    assert pt[p.gx] == x and pt[p.gy] == y
 
         assert added == len(self.particles)
 
@@ -71,6 +71,8 @@ class SequentialBarnesHut (BaseBarnesHut):
         for i in range(n):
             for j in range(n):
                 self.grid[i][j].get_COM()
+
+                print(self.grid[i][j].get_COM().particles[:, p.px:p.mass+1])
 
     def evaluate(self):   
         self.__evaluate(self.grid)

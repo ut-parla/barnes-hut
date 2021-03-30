@@ -120,7 +120,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             d_particles_sort = cuda.device_array_like(self.d_particles)
 
             #run kernel
-            blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
+            blocks = ceil((self.end-self.start) / THREADS_PER_BLOCK)
             threads = THREADS_PER_BLOCK
             logging.debug(f"launching {blocks} {threads} kernels")
             g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
@@ -129,9 +129,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
             g_sort_particles[blocks, threads](self.d_particles, d_particles_sort, self.d_grid_box_count)
 
-            # WHYYYY doesnt this wooooork...
-            # memory goes BOOM now :(
-            #d_particles_sort.copy_to_host( unst(self.str_host_particles, copy=False)[self.start:self.end] )
             d_particles_sort.copy_to_host(self.host_particles[self.start:self.end])
             self.d_particles = d_particles_sort
 
@@ -148,7 +145,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def summarize_and_collect(self, host_COMs, lock):
             # Before we had a subset of unordered points. now we have a subset of ordered points
             # so we need to recalculate our cumm box count before summarizing
-            blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
+            blocks = ceil((self.end-self.start) / THREADS_PER_BLOCK)
             threads = THREADS_PER_BLOCK
             g_recalculate_box_cumm[blocks, threads](self.d_particles, self.d_grid_box_cumm, self.grid_dim)
 
@@ -200,7 +197,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
             #save some space by just allocating px, py and mass
             neighbor_particles = np.empty((total_neighbor_particles,3))
-            indices = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int16)
+            indices = np.zeros((self.grid_dim,self.grid_dim, 2), dtype=np.int32)
 
             idx = 0
             for neighbor in cn:
@@ -209,6 +206,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 total = end-start
                 neighbor_particles[idx:idx+total] = self.host_particles[start:end, 0:3]
                 indices[x,y] = idx, idx+total
+                idx += total
 
             self.d_neighbors = cuda.to_device(neighbor_particles)
             self.d_neighbors_indices = cuda.to_device(indices)
@@ -217,24 +215,22 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def evaluate(self):
             # because of the limits of a block, we can't do one block per box, so let's spread
             # the boxes into the x axis, and use the y axis to have more than 1024 threads 
-
-            yblocks = ceil((self.end-self.start)/THREADS_PER_BLOCK)
+            pblocks = ceil((self.end-self.start)/THREADS_PER_BLOCK)
             d_cells = cuda.to_device(self.cells)
-            blocks = (len(d_cells), yblocks)
+            blocks = (pblocks, len(d_cells))
             threads = THREADS_PER_BLOCK
 
             print(f"launching {blocks} {threads}")
 
+            print(f"cumm ", self.d_grid_box_cumm.copy_to_host())
+            print(f"cells {d_cells.copy_to_host()}")
+
             g_evaluate_boxes_multigpu[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, 
                                       self.G, self.d_neighbors, self.d_neighbors_indices, d_cells, len(d_cells))
 
-            if self.debug:
-                ps = self.d_particles.copy_to_host()
-                logging.debug(f"GPU {self.resident_gpu}: evaluated points: {ps}")
-
         @notify_when_done
         def copy_into_host_particles(self):
-            self.d_particles.copy_to_host(self.host_particles[self.start:self.end])
+            self.d_particles.copy_to_host(self.host_particles)
 
         @notify_when_done
         def tick_particles(self):
@@ -295,8 +291,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         # there is a way of doing this without a sort, just gotta figure it out.
         # because we are scanning, might as well have ranges for each grid
         # TODO: something better
-        logging.debug(f"host particles after place/sort:\n{self.particles}")
-        #self.particles.sort(order=('gx', 'gy'), axis=0)
+        # logging.debug(f"host particles after place/sort:\n{self.particles}")
         self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0)
 
         # map every box in the grid to a slice of the particles array since it is sorted
@@ -328,9 +323,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             #print(f"start / end: {start_box}  {end_box}")
             #print(f"grid_ranges {self.grid_ranges}")
             x,y = start_box
-            start_p = self.grid_ranges[x,y][0]
+            start_p = self.grid_ranges[x,y,0]
             x,y = end_box
-            end_p = self.grid_ranges[x,y][1]
+            end_p = self.grid_ranges[x,y,1]
             #print(f"start_p {start_p}  end_p {end_p}")
 
             logging.debug(f"slice of gpu {i}: {start_p}-{end_p}")
@@ -353,9 +348,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.call_method_all_cells("copy_nonresident_neighbors", self.grid_ranges)
         self.call_method_all_cells("evaluate")
 
-        if self.checking_accuracy:
-            self.call_method_all_cells("copy_into_host_particles")
-            
     def get_particles(self, sample_indices=None):
         if sample_indices is None:
             return self.particles
@@ -368,26 +360,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
     def timestep(self):
         self.call_method_all_cells("tick_particles")
 
-        # if checking accuracy, we need to copy it back to host
-        if self.checking_accuracy:
-            """Alright, fasten your seatbelts, this is some ugly
-            research code.
-            We first argsort the unshuffled particle masses, then argsort that
-            array, which is needed to undo a sort, similar to what we do in the
-            sequential check.
-            Then, when we get the shuffled array from the GPU we argsort it
-            and use the previous undo argsort to shuffle it back to the original
-            positions. This assumes that masses are unique, which they probably aren't,
-            so unless things are somehow stable, we might see different errors each run.
-            """
-            self.particles = self.d_particles.copy_to_host()
-            would_sort = np.argsort(self.ordered_masses)
-            undo_sort = np.argsort(would_sort)
-            would_sort_particles = np.argsort(self.particles.view(p.fieldsstr), order=[p.massf], axis=0).squeeze(axis=1)
-            self.particles = self.particles[would_sort_particles][undo_sort]
-
     def ensure_particles_id_ordered(self):
-        self.d_particles.copy_to_host(self.particles)
+        self.call_method_all_cells("copy_into_host_particles")
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def cleanup(self):

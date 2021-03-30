@@ -1,5 +1,5 @@
 import logging
-from itertools import combinations, product
+from itertools import product
 from barneshut.internals import Config
 from barneshut.grid_decomposition import Box
 from barneshut.kernels.helpers import get_bounding_box, get_neighbor_cells, remove_bottom_left_neighbors
@@ -103,7 +103,6 @@ def __evaluate_com_concat_dedup(grid):
         # remove boxes that already computed their force to us (this function modifies neighbors list)
         for c in remove_bottom_left_neighbors(cell, neighbors):
             x2,y2 = c
-            print(f"direct interaction of {x}/{y}  -> {x2}/{y2}")
             # if box is empty, just skip it
             if grid[x2][y2].cloud.is_empty():
                 continue

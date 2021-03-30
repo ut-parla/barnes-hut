@@ -69,6 +69,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         nblocks = self.grid_dim*self.grid_dim / bsize
         nblocks = ceil(sqrt(nblocks))
         blocks = (nblocks, nblocks)
+        #print("cumm ", self.d_grid_box_cumm.copy_to_host())
+
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
 

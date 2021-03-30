@@ -41,5 +41,5 @@ class Box:
     def get_COM(self):
         return self.cloud.get_COM()
 
-    def apply_force(self, other_box, update_other=False, requires_lock=False):
-        self.cloud.apply_force(other_box.cloud, update_other, requires_lock)
+    def apply_force(self, other_box, update_other=False):
+        self.cloud.apply_force(other_box.cloud, update_other)

@@ -1,4 +1,3 @@
-from numpy.lib.recfunctions import structured_to_unstructured as unst
 from numba import cuda, float64
 from math import floor, fabs
 import barneshut.internals.particle as p
@@ -177,31 +176,31 @@ def d_self_self_grav(particles, start, end, G):
                 particles[pid, _ax] -= (f * xdif / my_mass)
                 particles[pid, _ay] -= (f * ydif / my_mass)
 
-        #print("particle ", pid, " axy ", " ",particles[pid, _ax],"  ", particles[pid, _ay])
+
 
 @cuda.jit(device=True)
 def d_self_other_grav(particles, start, end, other_start, other_end, G):
-    tid = cuda.threadIdx.x
+    tid = cuda.grid(1)
     pid = start+tid
     n = end-start
 
     # we are particle tid
     if tid < n:
-        my_x = particles[pid, _px]
-        my_y = particles[pid, _py]
-        my_mass = particles[pid, _mas]
+        my_x = particles[pid, p.px]
+        my_y = particles[pid, p.py]
+        my_mass = particles[pid, p.mass]
         for i in range(other_start, other_end):
-            ox, oy = particles[i, _px], particles[i, _py]
+            ox, oy = particles[i, p.px], particles[i, p.py]
             xdif, ydif = my_x-ox, my_y-oy
             dist = (xdif*xdif + ydif*ydif)**0.5
-            f = (G * my_mass * particles[i, _mas]) / (dist*dist)
+            f = (G * my_mass * particles[i, p.mass]) / (dist*dist)
             # update only ourselves since the other will calc to us
-            particles[pid, _ax] -= (f * xdif / my_mass)
-            particles[pid, _ay] -= (f * ydif / my_mass)
+            particles[pid, p.ax] -= (f * xdif / my_mass)
+            particles[pid, p.ay] -= (f * ydif / my_mass)
 
 @cuda.jit(device=True)
 def d_self_COM_grav(particles, start, end, COMs, cx, cy, G):
-    tid = cuda.threadIdx.x
+    tid = cuda.grid(1)
     pid = start+tid
     n = end-start
 
@@ -235,7 +234,6 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     #print("grid ", my_x, " ", my_y, " n ", n,  " particle ", tid, " is a go.  bi/bw/idx ", cuda.blockIdx.y, " ", cuda.blockDim.y, " ", cuda.threadIdx.y)
     #if my_x == 0 and my_y == 0:
     if tid < n:
-
         for gx in range(grid_dim): 
             for gy in range(grid_dim):
                 # self to self
@@ -293,20 +291,40 @@ def g_recalculate_box_cumm(particles, grid_box_cumm, grid_dim):
 @cuda.jit(device=True)
 def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G):
     n = end-start
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.y
-    # offset our id so we get particles between [start,end)
+    tid = cuda.grid(1)
     pid = start+tid
 
     # we are particle tid
     if tid < n:
-        my_x = particles[pid, _px]
-        my_y = particles[pid, _py]
-        my_mass = particles[pid, _mas]
+        my_x = particles[pid, p.px]
+        my_y = particles[pid, p.py]
+        my_mass = particles[pid, p.mass]
         for i in range(ns, ne):
-            ox, oy = neighbors[i, _px], neighbors[i, _py]
+            ox, oy = neighbors[i, p.px], neighbors[i, p.py]
             xdif, ydif = my_x-ox, my_y-oy
             dist = (xdif*xdif + ydif*ydif)**0.5
-            f = (G * my_mass * neighbors[i, _mas]) / (dist*dist)
+            f = (G * my_mass * neighbors[i, p.mass]) / (dist*dist)
+            # update only ourselves since the other will calc to us
+            particles[pid, p.ax] -= (f * xdif / my_mass)
+            particles[pid, p.ay] -= (f * ydif / my_mass)
+
+@cuda.jit(device=True)
+def d_self_self_grav_mgpu(particles, start, end, G):    
+    tid = cuda.grid(1)
+    pid = start+tid
+
+    # we are particle tid
+    my_x = particles[pid, _px]
+    my_y = particles[pid, _py]
+    my_mass = particles[pid, _mas]
+    for i in range(start, end):
+        # skip if both are us
+        if pid != i:
+            print("interact ", pid, "->", i)
+            ox, oy = particles[i, _px], particles[i, _py]
+            xdif, ydif = my_x-ox, my_y-oy
+            dist = (xdif*xdif + ydif*ydif)**0.5
+            f = (G * my_mass * particles[i, _mas]) / (dist*dist)
             # update only ourselves since the other will calc to us
             particles[pid, _ax] -= (f * xdif / my_mass)
             particles[pid, _ay] -= (f * ydif / my_mass)
@@ -317,39 +335,41 @@ def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neigh
     Let's do the easy thing: launch one block per box in the grid, launch threads
     equal to the max # of particles in a box
     """
-    cell_idx = cuda.blockIdx.x
-    my_y = cells[cell_idx][0]
-    my_x = cells[cell_idx][1]
+    cell_idx = cuda.blockIdx.y
+    my_x = cells[cell_idx, 0]
+    my_y = cells[cell_idx, 1]
+    tid = cuda.threadIdx.x + (cuda.blockIdx.x * cuda.blockDim.x)
 
-    tid = (cuda.blockIdx.y * cuda.blockDim.y) + cuda.threadIdx.y
-    
     start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
     end = grid_box_cumm[my_x, my_y]
     n = end-start
 
-    if start != end and tid < n:
+    #if tid == 0:
+    #    print("start/end ", start, "-", end, " of block ", my_x, " ", my_y)
+
+    #print("tid ", tid, " n ", n , " start ", start, " end ", end)
+    if n > 0 and tid < n:
         # for each other grid cell
         for gx in range(grid_dim): 
             for gy in range(grid_dim):
                 # self to self
                 if gx == my_x and gy == my_y:
-                    d_self_self_grav(particles, start, end, G)
-                # neighbors, direct p2p interaction
-                elif d_is_neighbor(my_x, my_y, gx, gy):
-                    ns, ne = neighbors_indices[gx, gy]
-                    # if both are zero, it's a cell from our GPU
-                    if ns == 0 and ne == 0:
-                        other_end = grid_box_cumm[gx, gy]
-                        other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
-                        #print("{}  eval  {} - {}".format(tid, other_start, other_end))
-                        d_self_other_grav(particles, start, end, other_start, other_end, G)
-                    # if not, it's from another GPU, so we need to use the indices
-                    else:
-                        d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G)
-            
-                # not neighbor, use COM
-                else:
-                    d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
+                    d_self_self_grav_mgpu(particles, start, end, G)
+                # # neighbors, direct p2p interaction
+                # elif d_is_neighbor(my_x, my_y, gx, gy):
+                #     ns, ne = neighbors_indices[gx, gy]
+                #     # if both are zero, it's a cell from our GPU
+                #     if ns == 0 and ne == 0:
+                #         other_end = grid_box_cumm[gx, gy]
+                #         other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
+                #         #print("{}  eval  {} - {}".format(tid, other_start, other_end))
+                #         d_self_other_grav(particles, start, end, other_start, other_end, G)
+                #     # if not, it's from another GPU, so we need to use the indices
+                #     else:
+                #         d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G)
+                # # not neighbor, use COM
+                # else:
+                #     d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
 
 @cuda.jit
 def g_tick_particles(particles, tick):

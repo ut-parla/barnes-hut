@@ -69,10 +69,9 @@ class ParlaBarnesHut (BaseBarnesHut):
             def particle_placement_task():
                 pslice[:, p.gx:p.gy+1] = pslice[:, p.px:p.py+1]
                 pslice[:, p.gx:p.gy+1] = (pslice[:, p.gx:p.gy+1] - self.min_xy) / self.step
-                pslice[:, p.gx:p.gy+1] = np.floor(pslice[:, p.gx:p.gy+1])
+                pslice[:, p.gx:p.gy+1] = np.clip(np.floor(pslice[:, p.gx:p.gy+1]), 0, self.grid_dim-1)
 
         await placement_TS
-        #print("after ", self.particles)
 
         self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
     
@@ -138,19 +137,16 @@ class ParlaBarnesHut (BaseBarnesHut):
                         continue
 
                     neighbors = get_neighbor_cells(tuple(box_xy), self.grid_dim)
-                    boxes = []
                     com_cells = []
                     for otherbox_xy in product(range(self.grid_dim), range(self.grid_dim)):
                         ox, oy = otherbox_xy
-                        if x == ox and y == oy:
-                            continue
-                        if self.grid[ox][oy].cloud.is_empty():
+                        if self.grid[ox][oy].cloud.is_empty() or (x == ox and y == oy):
                             continue
                         if otherbox_xy not in neighbors:
                             com_cells.append(self.grid[ox][oy])
 
                     coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
-                    boxes.append(coms)
+                    box.apply_force(coms, update_other=False)
 
                     # remove boxes that already computed their force to us (this function modifies neighbors list)
                     for otherbox_xy in remove_bottom_left_neighbors(box_xy, neighbors):
@@ -158,18 +154,13 @@ class ParlaBarnesHut (BaseBarnesHut):
                         # if box is empty, just skip it
                         if self.grid[ox][oy].cloud.is_empty():
                             continue
-                        boxes.append(self.grid[ox][oy])
-            
-                    # now we have to do cell <-> box in boxes 
-                    self_box = self.grid[x][y]
-                    for box in boxes:
-                        self_box.apply_force(box, requires_lock=True)
+                        box.apply_force(self.grid[ox][oy], update_other=True)
 
                     # we also need to interact with ourself
-                    self_box.apply_force(self_box, requires_lock=True)
+                    box.apply_force(box, update_other=False)
 
         await eval_TS
-
+        
     async def timestep(self):
         bpt = int(Config.get("parla", "timestep_boxes_per_task"))
         slices = self.grid_dim * self.grid_dim

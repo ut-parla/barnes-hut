@@ -23,7 +23,9 @@ class BarnesHut:
         elif impl == "parla":
             from .implementations.parla import ParlaBarnesHut
             bh = ParlaBarnesHut()
-            
+        elif impl == "parlamgpu":
+            from .implementations.parla_multigpu import ParlaMultiGPUBarnesHut
+            bh = ParlaMultiGPUBarnesHut()
         self.bh = bh
 
     def read_input_file(self, file):
