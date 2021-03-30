@@ -237,6 +237,7 @@ class BaseBarnesHut:
         """Use bounding boxes coordinates, create the grid
         matrix and their boxes
         """
+        
         # x and y have the same edge length, so get x length
         step = (self.max_xy[0]-self.min_xy[0]) / self.grid_dim
         # create grid as a matrix, starting from bottom left
@@ -247,6 +248,6 @@ class BaseBarnesHut:
             for j in range(self.grid_dim):
                 x = self.min_xy[0] + (i*step)
                 y = self.min_xy[1] + (j*step)
-                row.append(Box((x,y), (x+step, y+step), grav_kernel=self.grav_kernel))
+                row.append(Box((x,y), (x+step, y+step)))
                 #logging.debug(f"Box {i}/{j}: {(x,y)}, {(x+step, y+step)}")
             self.grid.append(row)

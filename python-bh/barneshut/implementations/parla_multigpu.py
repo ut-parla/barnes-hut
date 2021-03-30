@@ -182,17 +182,15 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
             for j in range(self.grid_dim):
                 all_boxes.append((i,j))
 
-        G = float(Config.get("bh", "grav_constant"))
-
         grid = {}
         # if we are using the cpu, let's build Cloud objects
         if cpu_tasks > 0:
-            grav_kernel = get_gravity_kernel()
             for box in all_boxes:
                 x, y = box
                 start, end = self.grid_ranges[x, y]
-                grid[(x,y)] = Cloud.from_slice(self.particles[start:end], grav_kernel)
+                grid[(x,y)] = Cloud.from_slice(self.particles[start:end])
 
+        G = float(Config.get("bh", "grav_constant"))
         eval_TS = TaskSpace("evaluate")
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
             @spawn(eval_TS[i], placement=placements[i])
@@ -202,7 +200,6 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
                 start = self.grid_ranges[fb_x, fb_y, 0]
                 end = self.grid_ranges[lb_x, lb_y, 1]
                 #print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
-
                 # let's get all the neighbors we need
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
                 #print(f"task {i} after :  {self.particles[start:end]}")

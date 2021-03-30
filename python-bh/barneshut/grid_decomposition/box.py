@@ -6,19 +6,18 @@ import logging
 
 class Box:
 
-    def __init__(self, bottom_left, top_right, grav_kernel=None):
+    def __init__(self, bottom_left, top_right):
         self.bottom_left = bottom_left
         self.top_right = top_right
-        self.cloud = Cloud(grav_kernel)
+        self.cloud = Cloud()
         self.is_COMs = False
 
     @staticmethod
     def from_list_of_boxes(boxes, is_COMs=False):
         # TODO: fix this passing around of kernels. we need a singleton or something
-        grav_kernel = boxes[0].cloud.grav_kernel
 
         b = Box((-1,-1), (-1,-1))
-        b.cloud = Cloud(grav_kernel, pre_alloc=len(boxes))
+        b.cloud = Cloud(pre_alloc=len(boxes))
         b.is_COMs = is_COMs
 
         #logging.debug(f"concatenating {len(boxes)} boxes")

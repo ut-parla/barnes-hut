@@ -3,10 +3,11 @@ import logging
 import threading
 from .config import Config
 import barneshut.internals.particle as p
+from barneshut.kernels.gravity import get_gravity_kernel
 
 class Cloud:
     
-    def __init__(self, grav_kernel, pre_alloc=None):
+    def __init__(self, pre_alloc=None):
         self.max_particles = int(Config.get("grid", "max_particles_per_box"))
         self.COM = None
         self.n = 0        
@@ -17,11 +18,11 @@ class Cloud:
         self.lock = threading.Lock()
         self.G = float(Config.get("bh", "grav_constant"))
         # Set our kernels
-        self.grav_kernel = grav_kernel
+        self.grav_kernel = get_gravity_kernel()
 
     @staticmethod
-    def from_slice(pslice, grav_kernel):
-        c = Cloud(grav_kernel)
+    def from_slice(pslice):
+        c = Cloud()
         c.add_particle_slice(pslice)
         return c
 
@@ -81,7 +82,7 @@ class Cloud:
 
     def get_COM(self):
         if self.COM is None:
-            self.COM = Cloud(self.grav_kernel, pre_alloc=1)
+            self.COM = Cloud(pre_alloc=1)
             # if we have no particle, COM is all zeros
             if self.is_empty():
                 data = (0,) * p.nfields

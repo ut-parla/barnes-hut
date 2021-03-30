@@ -9,7 +9,6 @@ from parla.function_decorators import *
 from parla.cuda import *
 from parla.cpu import *
 
-from barneshut.kernels.gravity import get_gravity_kernel
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
@@ -18,10 +17,13 @@ THREADS_PER_BLOCK = 128
 @specialized
 @njit(fastmath=True)
 def p_place_particles(particles, grid_cumm, min_xy, grid_dim, step):
+    min_x, min_y = min_xy[0], min_xy[1]
     for pi in range(particles.shape[0]):
-        particles[pi, p.gx:p.gy+1] = particles[pi, p.px:p.py+1]
-        particles[pi, p.gx:p.gy+1] = (particles[pi, p.gx:p.gy+1] - min_xy) / step
-        particles[pi, p.gx:p.gy+1] = np.clip(np.floor(particles[pi, p.gx:p.gy+1]), 0, grid_dim-1)
+        particles[pi, p.gx] = (particles[pi, p.px] - min_x) / step
+        particles[pi, p.gx] = min(floor(particles[pi, p.gx]), grid_dim-1)
+        particles[pi, p.gy] = (particles[pi, p.py] - min_y) / step
+        particles[pi, p.gy] = min(floor(particles[pi, p.gy]), grid_dim-1)
+
         gx, gy = int(particles[pi, p.gx]), int(particles[pi, p.gy])
         grid_cumm[gx, gy] += 1
 
@@ -86,30 +88,29 @@ def g_summarize_w_ranges(particles, box_list, offset, grid_ranges, grid_dim, COM
         COMs[my_x, my_y, 2] = M
 
 @specialized
-@njit(fastmath=True)
 def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
-    grav_kernel = get_gravity_kernel()
     for box in my_boxes:
         x, y = box
         if grid[(x,y)].is_empty():
             continue
 
-        neighbors = get_neighbor_cells(tuple(box), grid_dim)
+        neighbors = get_neighbor_cells((x,y), grid_dim)
         com_boxes = []
-        for other_box in product(range(grid_dim), range(grid_dim)):
-            ox, oy = other_box
-            # if box is empty, just skip it
-            if grid[(ox,oy)].is_empty() or (x==ox and y==oy):
-                continue
-            if other_box not in neighbors:
-                com_boxes.append((ox,oy))
+        for ox in range(grid_dim):
+            for oy in range(grid_dim):
+                other_box = (ox, oy)
+                # if box is empty, just skip it
+                if grid[other_box].is_empty() or (x==ox and y==oy):
+                    continue
+                if other_box not in neighbors:
+                    com_boxes.append(other_box)
 
         concatenated_COMs = np.empty((len(com_boxes), 3))
         for i, cb in enumerate(com_boxes):
             cx, cy = cb
             concatenated_COMs[i] = COMs[cx, cy]
 
-        CCOMS = Cloud.from_slice(concatenated_COMs, grav_kernel)
+        CCOMS = Cloud.from_slice(concatenated_COMs)
         # interact with non-neighbors
         grid[(x,y)].apply_force(CCOMS, update_other=False)
 
@@ -175,9 +176,6 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
     start -= offset
     end -= offset
     n = end-start
-
-    #if tid == 0:
-    #    print("start/end ", start, "-", end, " of block ", gx, " ", gy)
 
     if n > 0 and tid < n:
         # for each other grid cell
