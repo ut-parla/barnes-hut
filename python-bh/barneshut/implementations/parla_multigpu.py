@@ -148,7 +148,12 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         bpt = int(Config.get("parla", "eval_boxes_per_task"))
         ntasks = ceil((self.grid_dim * self.grid_dim) / bpt)
         logging.debug(f"Launching {ntasks} parla tasks to evaluate.")
-        all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
+        
+        all_boxes = []
+        for i in range(self.grid_dim):
+            for j in range(self.grid_dim):
+                all_boxes.append((j, i))
+        
         G = float(Config.get("bh", "grav_constant"))
 
         grid = {}
@@ -169,15 +174,18 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         for i, box_range in enumerate(np.array_split(all_boxes, ntasks)):
             @spawn(eval_TS[i], placement=gpu(0))
             def evaluate_task():
-                fb_x, fb_y = all_boxes[0]
-                lb_x, lb_y = all_boxes[-1]
-                start = self.grid_ranges[fb_x, fb_y, 0]
-                end = self.grid_ranges[lb_x, lb_y, 1]
+                if i == 1:
+                    fb_x, fb_y = box_range[0]
+                    lb_x, lb_y = box_range[-1]
+                    start = self.grid_ranges[fb_x, fb_y, 0]
+                    end = self.grid_ranges[lb_x, lb_y, 1]
+                    print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
 
-                # let's get all the neighbors we need
-                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                    # let's get all the neighbors we need
+                    mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
 
-                copy(self.particles[start:end], mod_particles[:])
+                    print(f"task {i} after :  {mod_particles}")
+                    copy(self.particles[start:end], mod_particles)
 
         await eval_TS
         

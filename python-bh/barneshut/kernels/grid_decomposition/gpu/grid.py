@@ -294,8 +294,7 @@ def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G)
     tid = cuda.grid(1)
     pid = start+tid
 
-    # we are particle tid
-    if tid < n:
+    if n > 0:
         my_x = particles[pid, p.px]
         my_y = particles[pid, p.py]
         my_mass = particles[pid, p.mass]
@@ -307,6 +306,8 @@ def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G)
             # update only ourselves since the other will calc to us
             particles[pid, p.ax] -= (f * xdif / my_mass)
             particles[pid, p.ay] -= (f * ydif / my_mass)
+            print("remote_neighbor updating  ", pid, " id ", particles[pid, p.pid])
+
 
 @cuda.jit(device=True)
 def d_self_self_grav_mgpu(particles, start, end, G):    

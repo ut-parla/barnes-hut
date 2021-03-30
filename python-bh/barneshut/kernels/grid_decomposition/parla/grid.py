@@ -142,12 +142,15 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
             start, end = cn_ranges[x, y]
             ostart, oend = grid_ranges[x, y]
             cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1]
-        print("cn particles ", cn_particles)
+        #print("cn particles ", cn_particles)
 
     print(f"cn ranges: ", cn_ranges)
     fb_x, fb_y = my_boxes[0]
     lb_x, lb_y = my_boxes[-1]
-    offset = fb_x
+    print("mybox ", my_boxes)
+    print("first range ", grid_ranges[fb_x, fb_y, 0])
+    print("last range ", grid_ranges[lb_x, lb_y, 1])
+    offset = grid_ranges[fb_x, fb_y, 0]
     print("grid ranges ", grid_ranges)
     start = grid_ranges[fb_x, fb_y, 0]
     end = grid_ranges[lb_x, lb_y, 1]
@@ -157,8 +160,13 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
     blocks = (pblocks, len(my_boxes))
     threads = THREADS_PER_BLOCK
 
+    print(f"before {my_particles}")
+    print(f"offset {offset}")
+
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
+
+    print("after kernel ", my_particles)
 
     return my_particles
 
@@ -185,6 +193,7 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
             for other_gy in range(grid_dim):
                 # self to self
                 if gx == other_gx and gy == other_gy:
+                    pass
                     d_self_self_grav_mgpu(particles, start, end, G)
                 # neighbors, direct p2p interaction
                 elif d_is_neighbor(other_gx, other_gy, gx, gy):
@@ -196,12 +205,13 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
                         ostart, oend = grid_ranges[other_gx, other_gy]
                         ostart -= offset
                         oend -= offset
-                        print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
-                        d_self_other_grav(particles, start, end, ostart, oend, G)
+                        # print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
+                        # d_self_other_grav(particles, start, end, ostart, oend, G)
                      # if not, it's from another GPU, so we need to use the indices
                     else:
-                        print("grid range ", other_gx, "-", other_gy, "  = ", ostart, " ", oend)
+                        
+                        print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
                         d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G)
-                # not neighbor, use COM
-                else:
-                    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G)
+                ## not neighbor, use COM
+                #else:
+                #    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G)
