@@ -19,7 +19,6 @@ from parla.function_decorators import *
 
 from barneshut.kernels.grid_decomposition.parla import *
 
-CPU = True
 
 class ParlaMultiGPUBarnesHut (BaseBarnesHut):
 
@@ -31,13 +30,13 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         self.grid_cumm = None
         self.ngpus = int(Config.get("parla", "gpus_available"))
 
-    def run(self, partitions=None, print_particles=False, check_accuracy=False):
+    def run(self,  check_accuracy=False):
         with Parla():
             @spawn()
             async def main():
-                await self.run_bh(n_iterations, partitions, print_particles, check_accuracy)
+                await self.run_bh(n_iterations, check_accuracy)
 
-    async def run_bh(self, partitions=None, print_particles=False, check_accuracy=False):
+    async def run_bh(self, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
         with Parla():

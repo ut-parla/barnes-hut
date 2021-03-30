@@ -33,6 +33,3 @@ class BarnesHut:
 
     def run(self, *args, **kwargs):
         self.bh.run(*args, **kwargs)
-
-    def reset_timer(self):
-        self.bh.reset_timer()

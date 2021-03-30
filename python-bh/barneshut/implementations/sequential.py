@@ -7,6 +7,7 @@ from numpy import sqrt
 from .base import BaseBarnesHut
 import barneshut.internals.particle as p
 
+
 class SequentialBarnesHut (BaseBarnesHut):
     """ Sequential implementation of nbody. Currently not Barnes-hut but
     a box decomposition."""
@@ -44,21 +45,14 @@ class SequentialBarnesHut (BaseBarnesHut):
         coords = coords.astype(int)
         ncoords = len(coords)
         added = 0
-
         for i in range(ncoords):
             x,y = np.clip(coords[i], 0, self.grid_dim-1)
             start = lens[i]
             # if last, get remaining
             end = lens[i+1] if i < ncoords-1 else len(self.particles)
-
             added += end-start
-            logging.debug(f"adding {end-start} particles to box {x}/{y}")
-
+            #logging.debug(f"adding {end-start} particles to box {x}/{y}")
             self.grid[x][y].add_particle_slice(self.particles[start:end])
-
-            #comment this
-            #for pt in self.particles[start:end]:
-            #    assert pt[p.gx] == x and pt[p.gy] == y
 
         assert added == len(self.particles)
 

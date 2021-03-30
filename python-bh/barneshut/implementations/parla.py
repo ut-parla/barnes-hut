@@ -24,13 +24,13 @@ class ParlaBarnesHut (BaseBarnesHut):
         from barneshut.kernels.gravity import get_gravity_kernel
         self.grav_kernel = get_gravity_kernel()
 
-    def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
+    def run(self, n_iterations, check_accuracy=False):
         with Parla():
             @spawn()
             async def main():
-                await self.run_bh(n_iterations, partitions, print_particles, check_accuracy)
+                await self.run_bh(n_iterations, check_accuracy)
 
-    async def run_bh(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
+    async def run_bh(self, n_iterations, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
         with Parla():

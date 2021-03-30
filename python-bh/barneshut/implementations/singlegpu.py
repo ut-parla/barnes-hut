@@ -66,22 +66,22 @@ class SingleGPUBarnesHut (BaseBarnesHut):
     def summarize(self):
         bsize = 16*16
         threads = (16, 16)
-        nblocks = self.grid_dim*self.grid_dim / bsize
+        nblocks = (self.grid_dim*self.grid_dim) / bsize
         nblocks = ceil(sqrt(nblocks))
         blocks = (nblocks, nblocks)
-        #print("cumm ", self.d_grid_box_cumm.copy_to_host())
 
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
+        #print(self.d_COMs.copy_to_host())
 
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
-        # the boxes into the x axis, and use the y axis to have more than 1024 threads 
+        # the boxes into the y axis, and use the x axis to have more than 1024 threads 
 
         # how many blocs we need to cover all particles
-        yblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
+        pblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
         #one block per box
-        blocks = (self.grid_dim*self.grid_dim, yblocks)
+        blocks = (pblocks, self.grid_dim*self.grid_dim)
         threads = min(THREADS_PER_BLOCK, self.n_particles)
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
 
@@ -94,7 +94,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         g_tick_particles[blocks, threads](self.d_particles, tick)
 
     def ensure_particles_id_ordered(self):
-        self.d_particles.copy_to_host(self.particles)
+        self.particles = self.d_particles.copy_to_host()
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def get_particles(self, sample_indices=None):

@@ -58,10 +58,7 @@ class BaseBarnesHut:
         """In case we need to do cleanup after we run, override this."""
         pass
 
-    def reset_timer(self):
-        Timer.reset()
-
-    def run(self, partitions=None, print_particles=False, check_accuracy=False):
+    def run(self, check_accuracy=False):
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
         overloaded."""
@@ -102,15 +99,7 @@ class BaseBarnesHut:
                     self.ensure_particles_id_ordered()
                     self.check_accuracy(sample_indices, nsquared_sample)
 
-        #Timer.print()
         self.cleanup()
-
-    def print_particles(self):
-        """Print all particles' coordinates for debugging"""
-        #for p in self.particles:
-        #    print(repr(p))
-        # TODO
-        raise NotImplementedError()
 
     def get_particles(self, sample_indices=None):
         """ Implementations that want correctness check MUST override

@@ -311,7 +311,7 @@ class PyKokkosBarnesHut(BaseBarnesHut):
             for j in range(n):
                 self.grid[i][j].tick()
 
-    def run(self, partitions=None, print_particles=False, check_accuracy=False):
+    def run(self, check_accuracy=False):
         """Runs the n-body algorithm using basic mechanisms. If
         something more intricate is required, then this method should be
         overloaded."""
