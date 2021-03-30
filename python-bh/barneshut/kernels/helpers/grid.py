@@ -21,8 +21,6 @@ def get_bounding_box(points):
     elif y_edge > x_edge:
         max_x += (y_edge - x_edge)
 
-    print(f"{min_x}-{max_x}   {min_y}-{max_y} ")
-
     #they are somewhat equal
     assert (max_x-min_x)-(max_y-min_y) < 0.00001
     return (min_x, min_y), (max_x, max_y)

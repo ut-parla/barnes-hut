@@ -161,12 +161,12 @@ def g_tick_particles(particles, tick):
     # find where each particle belongs in the grid
     pidx = tid
     while pidx < n_particles:
-        particles[pidx, _vx] += particles[pidx, _ax] * tick
-        particles[pidx, _vy] += particles[pidx, _ay] * tick
-        particles[pidx, _ax] = 0
-        particles[pidx, _ay] = 0
-        particles[pidx, _px] += particles[pidx, _vx] * tick
-        particles[pidx, _py] += particles[pidx, _vy] * tick
+        particles[pidx, p.vx] += particles[pidx, p.ax] * tick
+        particles[pidx, p.vy] += particles[pidx, p.ay] * tick
+        particles[pidx, p.ax] = 0
+        particles[pidx, p.ay] = 0
+        particles[pidx, p.px] += particles[pidx, p.vx] * tick
+        particles[pidx, p.py] += particles[pidx, p.vy] * tick
 
         pidx += tsize
 
@@ -339,20 +339,20 @@ def d_self_self_grav_mgpu(particles, start, end, G):
     pid = start+tid
 
     # we are particle tid
-    my_x = particles[pid, _px]
-    my_y = particles[pid, _py]
-    my_mass = particles[pid, _mas]
+    my_x = particles[pid, p.px]
+    my_y = particles[pid, p.py]
+    my_mass = particles[pid, p.mass]
     for i in range(start, end):
         # skip if both are us
         if pid != i:
             #print("interact ", pid, "->", i)
-            ox, oy = particles[i, _px], particles[i, _py]
+            ox, oy = particles[i, p.px], particles[i, p.py]
             xdif, ydif = my_x-ox, my_y-oy
             dist = (xdif*xdif + ydif*ydif)**0.5
-            f = (G * my_mass * particles[i, _mas]) / (dist*dist)
+            f = (G * my_mass * particles[i, p.mass]) / (dist*dist)
             # update only ourselves since the other will calc to us
-            particles[pid, _ax] -= (f * xdif / my_mass)
-            particles[pid, _ay] -= (f * ydif / my_mass)
+            particles[pid, p.ax] -= (f * xdif / my_mass)
+            particles[pid, p.ay] -= (f * ydif / my_mass)
 
 @cuda.jit
 def g_evaluate_boxes_multigpu(particles, grid_dim, grid_box_cumm, COMs, G, neighbors, neighbors_indices, cells, ncells):

@@ -1,6 +1,6 @@
 import numpy as np
 from math import ceil
-from numba import cuda, float64
+from numba import cuda, float64, njit
 from itertools import product
 import barneshut.internals.particle as p
 from barneshut.internals import Cloud
@@ -13,10 +13,10 @@ from barneshut.kernels.gravity import get_gravity_kernel
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-
 THREADS_PER_BLOCK = 128
 
 @specialized
+@njit(fastmath=True)
 def p_place_particles(particles, grid_cumm, min_xy, grid_dim, step):
     for pi in range(particles.shape[0]):
         particles[pi, p.gx:p.gy+1] = particles[pi, p.px:p.py+1]
@@ -40,15 +40,12 @@ def previous_box(grid, gx, gy, grid_dim):
         return grid[gx-1, gy]
 
 @specialized
+@njit(fastmath=True)
 def p_summarize_boxes(particle_slice, box_list, offset, grid_ranges, grid_dim, COMs):
-    
-    print("particles ", particle_slice)
-    
     for box in box_list:
         x, y = box
         start, end = grid_ranges[x, y]
 
-        print(f"box {x}/{y} = {start-offset}-{end-offset}")
         M, acc_x, acc_y = .0, .0, .0
         for pt in range(start-offset, end-offset):
             mass = particle_slice[pt, p.mass]
@@ -89,6 +86,7 @@ def g_summarize_w_ranges(particles, box_list, offset, grid_ranges, grid_dim, COM
         COMs[my_x, my_y, 2] = M
 
 @specialized
+@njit(fastmath=True)
 def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
     grav_kernel = get_gravity_kernel()
     for box in my_boxes:
@@ -97,9 +95,6 @@ def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
             continue
 
         neighbors = get_neighbor_cells(tuple(box), grid_dim)
-
-        print(f"neighbors of {x}/{y} :  {neighbors}")
-
         com_boxes = []
         for other_box in product(range(grid_dim), range(grid_dim)):
             ox, oy = other_box
@@ -107,12 +102,13 @@ def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
             if grid[(ox,oy)].is_empty() or (x==ox and y==oy):
                 continue
             if other_box not in neighbors:
-                com_boxes.append(grid[(ox,oy)])
+                com_boxes.append((ox,oy))
 
         concatenated_COMs = np.empty((len(com_boxes), 3))
         for i, cb in enumerate(com_boxes):
-            concatenated_COMs[i] = cb.positions[0, p.px:p.mass+1]
-        
+            cx, cy = cb
+            concatenated_COMs[i] = COMs[cx, cy]
+
         CCOMS = Cloud.from_slice(concatenated_COMs, grav_kernel)
         # interact with non-neighbors
         grid[(x,y)].apply_force(CCOMS, update_other=False)
@@ -132,7 +128,7 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
         cn |= set(get_neighbor_cells(tuple(box_xy), grid_dim))
     tp_boxes = [(x,y) for x,y in my_boxes]
     cn -= set(tp_boxes)
-    print(f"Close neighbors of {tp_boxes} : {cn}")
+    #print(f"Close neighbors of {tp_boxes} : {cn}")
 
     # now we need to copy those boxes
     n_close_neighbors = len(cn)
@@ -149,16 +145,10 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
             start, end = cn_ranges[x, y]
             ostart, oend = grid_ranges[x, y]
             cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1]
-        #print("cn particles ", cn_particles)
 
-    print(f"cn ranges: ", cn_ranges)
     fb_x, fb_y = my_boxes[0]
     lb_x, lb_y = my_boxes[-1]
-    print("mybox ", my_boxes)
-    print("first range ", grid_ranges[fb_x, fb_y, 0])
-    print("last range ", grid_ranges[lb_x, lb_y, 1])
     offset = grid_ranges[fb_x, fb_y, 0]
-    print("grid ranges ", grid_ranges)
     start = grid_ranges[fb_x, fb_y, 0]
     end = grid_ranges[lb_x, lb_y, 1]
     my_particles = particles[start:end]
@@ -167,13 +157,8 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
     blocks = (pblocks, len(my_boxes))
     threads = THREADS_PER_BLOCK
 
-    print(f"before {my_particles}")
-    print(f"offset {offset}")
-
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
-
-    print("after kernel ", my_particles)
 
     return my_particles
 

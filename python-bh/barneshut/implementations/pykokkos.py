@@ -59,7 +59,7 @@ class PyKokkosBox:
         self.top_right = top_right
         self.n = 0
 
-        self.max_particles: int = int(Config.get("quadtree", "particles_per_leaf"))
+        self.max_particles: int = int(Config.get("grid", "max_particles_per_box"))
         self.tick_parameter: float = float(Config.get("bh", "tick_seconds"))
 
         self.position: pk.View2D[pk.double] = pk.View([self.max_particles, N_DIM], pk.double)

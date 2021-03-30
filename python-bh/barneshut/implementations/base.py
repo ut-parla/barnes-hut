@@ -18,7 +18,7 @@ class BaseBarnesHut:
         # Implementaitons might check this flag to do specific things
         self.checking_accuracy = False
         self.sample_size = int(Config.get("general", "sample_check_size"))
-        self.particles_per_leaf = int(Config.get("quadtree", "particles_per_leaf"))
+        self.particles_per_leaf = int(Config.get("grid", "max_particles_per_box"))
 
         self.skip_timestep = bool(Config.get("general", "skip_timestep")) 
         self.evaluation_rounds = int(Config.get("general", "evaluation_rounds")) 

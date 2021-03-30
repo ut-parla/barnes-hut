@@ -93,13 +93,16 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
             @spawn(placement_TS[i], placement=placements[i])
             def particle_placement_task():
-                # ensure we have the particles and cumm grid
-                particles_here = clone_here(pslice)
-                cumm = clone_here(grid_cumms[i])
-                # p_place_particles can be called on cpu or gpu
-                p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
-                copy(grid_cumms[i], cumm)
-                copy(pslice, particles_here)
+                with Timer.get_handle("placetask"):
+                    # ensure we have the particles and cumm grid
+                    #particles_here = clone_here(pslice)
+                    particles_here = pslice
+                    #cumm = clone_here(grid_cumms[i])
+                    cumm = grid_cumms[i]
+                    # p_place_particles can be called on cpu or gpu
+                    p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
+                    #copy(grid_cumms[i], cumm)
+                    #copy(pslice, particles_here)
 
         post_placement_TS = TaskSpace("post_placement")
         @spawn(post_placement_TS[0], [placement_TS])
@@ -148,7 +151,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
             @spawn(summarize_TS[i], placement=placements[i])
             def summarize_task():
-                print(f"task {i}  :", box_range)
+                #print(f"task {i}  :", box_range)
                 fb_x, fb_y = box_range[0]
                 lb_x, lb_y = box_range[-1]
                 start = self.grid_ranges[fb_x, fb_y, 0]
@@ -160,7 +163,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         # accumulate COMs
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
-        print("task coms: ", self.COMs)
+        #print("task coms: ", self.COMs)
 
     async def evaluate(self):
         cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
@@ -198,15 +201,14 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
                 lb_x, lb_y = box_range[-1]
                 start = self.grid_ranges[fb_x, fb_y, 0]
                 end = self.grid_ranges[lb_x, lb_y, 1]
-                print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
+                #print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
 
                 # let's get all the neighbors we need
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-                print(f"task {i} after :  {self.particles[start:end]}")
+                #print(f"task {i} after :  {self.particles[start:end]}")
                 #TODO: check if we need to copy back on gpu
                 if placements[i] is not cpu:
                     copy(self.particles[start:end], mod_particles)
-
         await eval_TS
         
     async def timestep(self):
@@ -215,8 +217,6 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
     def ensure_particles_id_ordered(self):
         # just sort by id since they were shuffled
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
-        print("resorted  ", self.particles)
-
 
     def get_particles(self, sample_indices=None):
          if sample_indices is None:

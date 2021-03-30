@@ -7,7 +7,7 @@ import barneshut.internals.particle as p
 class Cloud:
     
     def __init__(self, grav_kernel, pre_alloc=None):
-        self.max_particles = int(Config.get("quadtree", "particles_per_leaf"))
+        self.max_particles = int(Config.get("grid", "max_particles_per_box"))
         self.COM = None
         self.n = 0        
         if pre_alloc is not None:

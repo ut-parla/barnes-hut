@@ -58,7 +58,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             self.cleanup()
 
     async def parla_place_particles(self):
-        ppt = int(Config.get("parla", "placement_particles_per_task"))
+        ppt = int(Config.get("parla_cpu_only", "placement_particles_per_task"))
         slices = ceil(self.n_particles / ppt)
         logging.debug(f"Launching {slices} parla tasks to calculate particle placement.")
 
@@ -102,7 +102,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         assert added == len(self.particles)
 
     async def summarize(self):
-        bpt = int(Config.get("parla", "summarize_boxes_per_task"))
+        bpt = int(Config.get("parla_cpu_only", "summarize_boxes_per_task"))
         slices = ceil((self.grid_dim * self.grid_dim) / bpt)
         logging.debug(f"Launching {slices} parla tasks to summarize.")
         all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
@@ -118,7 +118,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         await summarize_TS
 
     async def evaluate(self):
-        bpt = int(Config.get("parla", "eval_boxes_per_task"))
+        bpt = int(Config.get("parla_cpu_only", "eval_boxes_per_task"))
         slices = ceil((self.grid_dim * self.grid_dim) / bpt)
         logging.debug(f"Launching {slices} parla tasks to evaluate.")
         all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
@@ -162,7 +162,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         await eval_TS
         
     async def timestep(self):
-        bpt = int(Config.get("parla", "timestep_boxes_per_task"))
+        bpt = int(Config.get("parla_cpu_only", "timestep_boxes_per_task"))
         slices = self.grid_dim * self.grid_dim
         logging.debug(f"Launching {slices} parla tasks to tick timestep.")
         all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
