@@ -95,10 +95,11 @@ def __evaluate_com_concat_dedup(grid):
                 continue
             if c not in neighbors:
                 com_cells.append(grid[x2][y2])
-        coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
-        #logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
-        #        should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
-        self_leaf.apply_force(coms, update_other=False)
+        if len(com_cells) != 0:
+            coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
+            #logging.debug(f'''Concatenated COMs have {coms.cloud.n} particles, 
+            #        should have {n*n-len(neighbors)}, correct? {coms.cloud.n==n*n-len(neighbors)}''')
+            self_leaf.apply_force(coms, update_other=False)
 
         # remove boxes that already computed their force to us (this function modifies neighbors list)
         for c in remove_bottom_left_neighbors(cell, neighbors):

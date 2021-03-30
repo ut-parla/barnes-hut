@@ -34,6 +34,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         super().__init__()
         self.grid = None
         self.grid_cumm = None
+        self.ngpus = int(Config.get("parla", "gpus_available"))
 
     def run(self, n_iterations, partitions=None, print_particles=False, check_accuracy=False):
         with Parla():
@@ -73,17 +74,24 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         by the box in the grid they belong.
         """
         self.set_particles_bounding_box()
+
+        cpu_tasks = int(Config.get("parla", "placement_cpu_tasks"))
+        gpu_tasks = int(Config.get("parla", "placement_gpu_tasks"))
+        total_tasks = cpu_tasks + gpu_tasks        
+        logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to calculate particle placement.")
+
         self.grid_cumm = np.zeros((self.grid_dim, self.grid_dim), dtype=np.int32)
-
-        ppt = int(Config.get("parla", "placement_particles_per_task"))
-        ntasks = ceil(self.n_particles / ppt)
-        logging.debug(f"Launching {ntasks} parla tasks to calculate particle placement.")
-
-        grid_cumms = np.zeros((ntasks, self.grid_dim, self.grid_dim), dtype=np.int32)
-        print("before ", self.particles)
+        grid_cumms = np.zeros((total_tasks, self.grid_dim, self.grid_dim), dtype=np.int32)
         placement_TS = TaskSpace("particle_placement")
-        for i, pslice in enumerate(np.array_split(self.particles, ntasks)):
-            @spawn(placement_TS[i], placement=cpu)
+        
+        placements = []
+        for _ in range(cpu_tasks):
+            placements.append(cpu)
+        for i in range(gpu_tasks):
+            placements.append(gpu(i%self.ngpus))
+
+        for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+            @spawn(placement_TS[i], placement=placements[i])
             def particle_placement_task():
                 # ensure we have the particles and cumm grid
                 particles_here = clone_here(pslice)
@@ -97,67 +105,85 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         @spawn(post_placement_TS[0], [placement_TS])
         def sort_grid_task():
             self.particles.view(p.fieldsstr).sort(order=(p.gxf, p.gyf), axis=0)
-            print("sorted ", self.particles)
+            #print("sorted ", self.particles)
 
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
         @spawn(post_placement_TS[1], [placement_TS])
         def acc_cumm_grid_task():
             # accumulate all cumm grids
-            for i in range(ntasks):
+            for i in range(total_tasks):
                 self.grid_cumm += grid_cumms[i]
             acc = 0
             for i in range(self.grid_dim):
                 for j in range(self.grid_dim):
-                    self.grid_ranges[j, i] = acc, acc+self.grid_cumm[j, i]
-                    acc += self.grid_cumm[j, i]
+                    self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
+                    acc += self.grid_cumm[i,j]
         await post_placement_TS
 
+        #print("grid ranges  ", self.grid_ranges)
+
     async def summarize(self):
-        bpt = int(Config.get("parla", "summarize_boxes_per_task"))
-        ntasks = ceil((self.grid_dim * self.grid_dim) / bpt)
-        logging.debug(f"Launching {ntasks} parla tasks to summarize.")
-        all_boxes = list(product(range(self.grid_dim), range(self.grid_dim)))
+        cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
+        gpu_tasks = int(Config.get("parla", "summarize_gpu_tasks"))
+        total_tasks = cpu_tasks + gpu_tasks        
+        logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to summarize.")
+
+        placements = []
+        for _ in range(cpu_tasks):
+            placements.append(cpu)
+        for i in range(gpu_tasks):
+            placements.append(gpu(i%self.ngpus))
+
+        all_boxes = []
+        for i in range(self.grid_dim):
+            for j in range(self.grid_dim):
+                all_boxes.append((i,j))
 
         self.COMs = np.zeros((self.grid_dim, self.grid_dim, 3), dtype=np.float32)
-        tasks_COMs = np.zeros((ntasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
+        tasks_COMs = np.zeros((total_tasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
 
         summarize_TS = TaskSpace("summarize")
-        # because particles are sorted, and product also generates sorted indices
+        # because particles are sorted, and all_boxes is also sorted indices
         # we can assume that a subset of boxes here is contiguous
-        for i, box_range in enumerate(np.array_split(all_boxes, ntasks)):
-            print("task ", i)
-            @spawn(summarize_TS[i], placement=gpu(0))
+        for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
+            @spawn(summarize_TS[i], placement=placements[i])
             def summarize_task():
+                print(f"task {i}  :", box_range)
                 fb_x, fb_y = box_range[0]
                 lb_x, lb_y = box_range[-1]
                 start = self.grid_ranges[fb_x, fb_y, 0]
-                end = self.grid_ranges[lb_x, lb_y, 1]
-                logging.debug(f"Summarize {i}  range {start}-{end}")                
+                end = self.grid_ranges[lb_x, lb_y, 1]             
                 particle_slice = self.particles[start:end]
-
-                p_summarize_boxes(particle_slice, box_range, self.grid_ranges, self.grid_dim, tasks_COMs[i])
+                p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
 
         await summarize_TS
-    
         # accumulate COMs
-        for i in range(ntasks):
+        for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
         print("task coms: ", self.COMs)
 
     async def evaluate(self):
-        bpt = int(Config.get("parla", "eval_boxes_per_task"))
-        ntasks = ceil((self.grid_dim * self.grid_dim) / bpt)
-        logging.debug(f"Launching {ntasks} parla tasks to evaluate.")
-        
+        cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
+        gpu_tasks = int(Config.get("parla", "evaluation_gpu_tasks"))
+        total_tasks = cpu_tasks + gpu_tasks        
+        logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to evaluate.")
+
+        placements = []
+        for _ in range(cpu_tasks):
+            placements.append(cpu)
+        for i in range(gpu_tasks):
+            placements.append(gpu(i%self.ngpus))
+
         all_boxes = []
         for i in range(self.grid_dim):
             for j in range(self.grid_dim):
-                all_boxes.append((j, i))
-        
+                all_boxes.append((i,j))
+
         G = float(Config.get("bh", "grav_constant"))
 
         grid = {}
-        if CPU:
+        # if we are using the cpu, let's build Cloud objects
+        if cpu_tasks > 0:
             grav_kernel = get_gravity_kernel()
             for box in all_boxes:
                 x, y = box
@@ -165,26 +191,20 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
                 grid[(x,y)] = Cloud.from_slice(self.particles[start:end], grav_kernel)
 
         eval_TS = TaskSpace("evaluate")
-        # # cpu tasks
-        # for i, box_range in enumerate(np.array_split(all_boxes, ntasks)):
-        #     @spawn(eval_TS[i])
-        #     def evaluate_task():
-        #         p_evaluate(grid, box_range, self.COMs, G, self.grid_dim)
-
-        for i, box_range in enumerate(np.array_split(all_boxes, ntasks)):
-            @spawn(eval_TS[i], placement=gpu(0))
+        for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
+            @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
-                if i == 1:
-                    fb_x, fb_y = box_range[0]
-                    lb_x, lb_y = box_range[-1]
-                    start = self.grid_ranges[fb_x, fb_y, 0]
-                    end = self.grid_ranges[lb_x, lb_y, 1]
-                    print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
+                fb_x, fb_y = box_range[0]
+                lb_x, lb_y = box_range[-1]
+                start = self.grid_ranges[fb_x, fb_y, 0]
+                end = self.grid_ranges[lb_x, lb_y, 1]
+                print(f"task {i}: {box_range}.  start/end {start}-{end}, ids {self.particles[start:end, p.pid]}")
 
-                    # let's get all the neighbors we need
-                    mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-
-                    print(f"task {i} after :  {mod_particles}")
+                # let's get all the neighbors we need
+                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                print(f"task {i} after :  {self.particles[start:end]}")
+                #TODO: check if we need to copy back on gpu
+                if placements[i] is not cpu:
                     copy(self.particles[start:end], mod_particles)
 
         await eval_TS
@@ -195,6 +215,8 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
     def ensure_particles_id_ordered(self):
         # just sort by id since they were shuffled
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
+        print("resorted  ", self.particles)
+
 
     def get_particles(self, sample_indices=None):
          if sample_indices is None:

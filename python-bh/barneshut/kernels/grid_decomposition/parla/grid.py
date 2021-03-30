@@ -40,13 +40,17 @@ def previous_box(grid, gx, gy, grid_dim):
         return grid[gx-1, gy]
 
 @specialized
-def p_summarize_boxes(particle_slice, box_list, grid_ranges, grid_dim, COMs):
+def p_summarize_boxes(particle_slice, box_list, offset, grid_ranges, grid_dim, COMs):
+    
+    print("particles ", particle_slice)
+    
     for box in box_list:
         x, y = box
         start, end = grid_ranges[x, y]
 
+        print(f"box {x}/{y} = {start-offset}-{end-offset}")
         M, acc_x, acc_y = .0, .0, .0
-        for pt in range(start, end):
+        for pt in range(start-offset, end-offset):
             mass = particle_slice[pt, p.mass]
             acc_x += particle_slice[pt, p.px] * mass
             acc_y += particle_slice[pt, p.py] * mass
@@ -57,13 +61,13 @@ def p_summarize_boxes(particle_slice, box_list, grid_ranges, grid_dim, COMs):
             COMs[x, y, 2] = M
 
 @p_summarize_boxes.variant(gpu)
-def p_summarize_boxes_gpu(particle_slice, box_list, grid_ranges, grid_dim, COMs):
+def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_dim, COMs):
     blocks = 1
     threads = len(box_list)
-    g_summarize_w_ranges[blocks, threads](particle_slice, box_list, grid_ranges, grid_dim, COMs)
+    g_summarize_w_ranges[blocks, threads](particle_slice, box_list, offset, grid_ranges, grid_dim, COMs)
 
 @cuda.jit
-def g_summarize_w_ranges(particles, box_list, grid_ranges, grid_dim, COMs):
+def g_summarize_w_ranges(particles, box_list, offset, grid_ranges, grid_dim, COMs):
     tid = cuda.grid(1)
     my_x, my_y = box_list[tid]
     start, end = grid_ranges[my_x, my_y]
@@ -74,9 +78,10 @@ def g_summarize_w_ranges(particles, box_list, grid_ranges, grid_dim, COMs):
 
     #print("calculating COM of {}/{}. Start/end: {} - {}".format(my_x, my_y, start, end))
     for i in range(start, end):
-        mass = particles[i, p.mass]
-        acc_x += particles[i, p.px] * mass
-        acc_y += particles[i, p.py] * mass
+        pi = i-offset
+        mass = particles[pi, p.mass]
+        acc_x += particles[pi, p.px] * mass
+        acc_y += particles[pi, p.py] * mass
         M += mass
     if M != .0:
         COMs[my_x, my_y, 0] = acc_x / M
@@ -92,6 +97,8 @@ def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
             continue
 
         neighbors = get_neighbor_cells(tuple(box), grid_dim)
+
+        print(f"neighbors of {x}/{y} :  {neighbors}")
 
         com_boxes = []
         for other_box in product(range(grid_dim), range(grid_dim)):
@@ -184,8 +191,8 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
     end -= offset
     n = end-start
 
-    if tid == 0:
-        print("start/end ", start, "-", end, " of block ", gx, " ", gy)
+    #if tid == 0:
+    #    print("start/end ", start, "-", end, " of block ", gx, " ", gy)
 
     if n > 0 and tid < n:
         # for each other grid cell
@@ -200,18 +207,17 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
                     ns = cn_ranges[other_gx, other_gy, 0]
                     ne = cn_ranges[other_gx, other_gy, 1]
                     # if both are zero, it's a cell from our GPU
-                    print("ns ne ", ns, " ", ne)
+                    #print("ns ne ", ns, " ", ne)
                     if ns == 0 and ne == 0:
                         ostart, oend = grid_ranges[other_gx, other_gy]
                         ostart -= offset
                         oend -= offset
-                        # print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
-                        # d_self_other_grav(particles, start, end, ostart, oend, G)
+                        #print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
+                        d_self_other_grav(particles, start, end, ostart, oend, G)
                      # if not, it's from another GPU, so we need to use the indices
                     else:
-                        
-                        print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
+                        #print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
                         d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G)
                 ## not neighbor, use COM
-                #else:
-                #    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G)
+                else:
+                    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G)
