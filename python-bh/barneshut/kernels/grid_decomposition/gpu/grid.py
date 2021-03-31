@@ -277,8 +277,8 @@ def g_recalculate_box_cumm(particles, grid_box_cumm, grid_dim):
 
     pidx = tid
     while pidx < n_particles:
-        x = int(particles[pidx, _gx])
-        y = int(particles[pidx, _gy])
+        x = int(particles[pidx, p.gx])
+        y = int(particles[pidx, p.gy])
 
         if not CUDA_DEBUG:
             cuda.atomic.add(grid_box_cumm, (x,y), 1)

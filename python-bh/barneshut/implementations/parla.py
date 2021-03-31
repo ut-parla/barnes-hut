@@ -24,38 +24,38 @@ class ParlaBarnesHut (BaseBarnesHut):
         from barneshut.kernels.gravity import get_gravity_kernel
         self.grav_kernel = get_gravity_kernel()
 
-    def run(self, n_iterations, check_accuracy=False):
+    def run(self, check_accuracy=False):
         with Parla():
             @spawn()
             async def main():
-                await self.run_bh(n_iterations, check_accuracy)
+                await self.run_bh(check_accuracy)
 
-    async def run_bh(self, n_iterations, check_accuracy=False):
+    async def run_bh(self, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
-        with Parla():
-            self.checking_accuracy = check_accuracy
-            if self.checking_accuracy:
-                sample_indices = self.generate_sample_indices()
-            with Timer.get_handle("end-to-end"):
-                for _ in range(n_iterations):
-                    if self.checking_accuracy:
-                        nsquared_sample = self.preround_accuracy_check(sample_indices)
-                    with Timer.get_handle("grid_creation"):
-                        await self.create_tree()
-                    with Timer.get_handle("summarization"):
-                        await self.summarize()
-                    for _ in range(self.evaluation_rounds):
-                        with Timer.get_handle("evaluation"):
-                            await self.evaluate()
-                    if not self.skip_timestep:
-                        with Timer.get_handle("timestep"):
-                            await self.timestep()
-                    if self.checking_accuracy:
-                        self.ensure_particles_id_ordered()
-                        self.check_accuracy(sample_indices, nsquared_sample)
-            Timer.print()
-            self.cleanup()
+        n_iterations = int(Config.get("general", "rounds"))
+        self.checking_accuracy = check_accuracy
+        if self.checking_accuracy:
+            sample_indices = self.generate_sample_indices()
+        with Timer.get_handle("end-to-end"):
+            for _ in range(n_iterations):
+                if self.checking_accuracy:
+                    nsquared_sample = self.preround_accuracy_check(sample_indices)
+                with Timer.get_handle("grid_creation"):
+                    await self.create_tree()
+                with Timer.get_handle("summarization"):
+                    await self.summarize()
+                for _ in range(self.evaluation_rounds):
+                    with Timer.get_handle("evaluation"):
+                        await self.evaluate()
+                if not self.skip_timestep:
+                    with Timer.get_handle("timestep"):
+                        await self.timestep()
+                if self.checking_accuracy:
+                    self.ensure_particles_id_ordered()
+                    self.check_accuracy(sample_indices, nsquared_sample)
+        #Timer.print()
+        self.cleanup()
 
     async def parla_place_particles(self):
         ppt = int(Config.get("parla_cpu_only", "placement_particles_per_task"))

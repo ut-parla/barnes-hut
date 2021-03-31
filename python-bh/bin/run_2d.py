@@ -51,6 +51,7 @@ if __name__ == "__main__":
 
     for _ in range(nwarmups):
         bh.run(check_accuracy=check)
+    print("warmup done")
     Timer.reset()
     for _ in range(nruns):
         bh.run(check_accuracy=check)
