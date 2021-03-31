@@ -10,10 +10,6 @@ from numba import cuda
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-LEAF_OCCUPANCY = 0.7
-
-# TODO: improve this thing to be an optimal
-THREADS_PER_BLOCK = 128
 
 class SingleGPUBarnesHut (BaseBarnesHut):
 
@@ -25,7 +21,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.G = float(Config.get("bh", "grav_constant"))
         self.device_arrays_initd = False
         self.debug = logging.root.level == logging.DEBUG
-        
+        self.threads_per_block = float(Config.get("cuda", "threads_per_block"))
+
     def __init_device_arrays(self):
         """ Allocate arrays on the device and copy the particles
         array too. This is done only once.
@@ -51,8 +48,8 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.d_grid_box_count = cuda.to_device(zz)
 
         #call kernel
-        blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
-        threads = THREADS_PER_BLOCK
+        blocks = ceil(self.n_particles / self.threads_per_block)
+        threads = self.threads_per_block
         g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
         g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
@@ -79,18 +76,18 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         # the boxes into the y axis, and use the x axis to have more than 1024 threads 
 
         # how many blocs we need to cover all particles
-        pblocks = ceil(self.n_particles/THREADS_PER_BLOCK)
+        pblocks = ceil(self.n_particles/self.threads_per_block)
         #one block per box
         blocks = (pblocks, self.grid_dim*self.grid_dim)
-        threads = min(THREADS_PER_BLOCK, self.n_particles)
+        threads = min(self.threads_per_block, self.n_particles)
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
 
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
 
     def timestep(self):
         tick = float(Config.get("bh", "tick_seconds"))
-        blocks = ceil(self.n_particles / THREADS_PER_BLOCK)
-        threads = THREADS_PER_BLOCK
+        blocks = ceil(self.n_particles / self.threads_per_block)
+        threads = self.threads_per_block
         g_tick_particles[blocks, threads](self.d_particles, tick)
 
     def ensure_particles_id_ordered(self):

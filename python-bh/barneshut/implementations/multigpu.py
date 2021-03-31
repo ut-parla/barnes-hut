@@ -13,10 +13,6 @@ import barneshut.internals.particle as p
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-LEAF_OCCUPANCY = 0.7
-# TODO: improve this thing to be an optimal
-THREADS_PER_BLOCK = 512
-
 #
 # TODO: Need to find a way of having a thread per GPU in a way that doesn't
 # make them possibly switch gpu context to a different one across calls.
@@ -54,6 +50,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             self.cells = None
             self.G = float(Config.get("bh", "grav_constant"))
             self.keep_running = True
+            self.threads_per_block = float(Config.get("cuda", "threads_per_block"))
 
         def launch(self):
             """Launch ourselves as thread"""
@@ -120,8 +117,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             d_particles_sort = cuda.device_array_like(self.d_particles)
 
             #run kernel
-            blocks = ceil((self.end-self.start) / THREADS_PER_BLOCK)
-            threads = THREADS_PER_BLOCK
+            blocks = ceil((self.end-self.start) / self.threads_per_block)
+            threads = self.threads_per_block
             logging.debug(f"launching {blocks} {threads} kernels")
             g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
@@ -145,8 +142,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def summarize_and_collect(self, host_COMs, lock):
             # Before we had a subset of unordered points. now we have a subset of ordered points
             # so we need to recalculate our cumm box count before summarizing
-            blocks = ceil((self.end-self.start) / THREADS_PER_BLOCK)
-            threads = THREADS_PER_BLOCK
+            blocks = ceil((self.end-self.start) / self.threads_per_block)
+            threads = self.threads_per_block
             g_recalculate_box_cumm[blocks, threads](self.d_particles, self.d_grid_box_cumm, self.grid_dim)
 
             bsize = 16*16
@@ -215,10 +212,10 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def evaluate(self):
             # because of the limits of a block, we can't do one block per box, so let's spread
             # the boxes into the x axis, and use the y axis to have more than 1024 threads 
-            pblocks = ceil((self.end-self.start)/THREADS_PER_BLOCK)
+            pblocks = ceil((self.end-self.start)/self.threads_per_block)
             d_cells = cuda.to_device(self.cells)
             blocks = (pblocks, len(d_cells))
-            threads = THREADS_PER_BLOCK
+            threads = self.threads_per_block
 
             print(f"launching {blocks} {threads}")
 
@@ -234,8 +231,8 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
         @notify_when_done
         def tick_particles(self):
-            blocks = ceil(self.end-self.start / THREADS_PER_BLOCK)
-            threads = THREADS_PER_BLOCK
+            blocks = ceil(self.end-self.start / self.threads_per_block)
+            threads = self.threads_per_block
             tick = float(Config.get("bh", "tick_seconds"))
             #g_tick_particles[blocks, threads](self.d_particles, tick)
 

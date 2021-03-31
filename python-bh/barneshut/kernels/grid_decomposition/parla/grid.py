@@ -12,7 +12,6 @@ from parla.cpu import *
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-THREADS_PER_BLOCK = 128
 
 @specialized
 @njit(fastmath=True)
@@ -29,8 +28,9 @@ def p_place_particles(particles, grid_cumm, min_xy, grid_dim, step):
 
 @p_place_particles.variant(gpu)
 def p_place_particles_gpu(particles, grid_cumm, min_xy, grid_dim, step):
-    blocks = ceil(particles.shape[0] / THREADS_PER_BLOCK)
-    threads = THREADS_PER_BLOCK
+    threads_per_block = float(Config.get("cuda", "threads_per_block"))
+    blocks = ceil(particles.shape[0] / threads_per_block)
+    threads = threads_per_block
     g_place_particles[blocks, threads](particles, min_xy, step, grid_dim, grid_cumm)
 
 def previous_box(grid, gx, gy, grid_dim):
@@ -124,6 +124,7 @@ def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
 
 @p_evaluate.variant(gpu)
 def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
+    threads_per_block = float(Config.get("cuda", "threads_per_block"))
     cn = set()
     for box_xy in my_boxes:
         cn |= set(get_neighbor_cells(tuple(box_xy), grid_dim))
@@ -154,9 +155,9 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
     end = grid_ranges[lb_x, lb_y, 1]
     my_particles = particles[start:end]
 
-    pblocks = ceil((end-start)/THREADS_PER_BLOCK)
+    pblocks = ceil((end-start)/threads_per_block)
     blocks = (pblocks, len(my_boxes))
-    threads = THREADS_PER_BLOCK
+    threads = threads_per_block
 
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
