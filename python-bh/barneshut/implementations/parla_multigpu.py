@@ -34,7 +34,7 @@ class ParlaMultiGPUBarnesHut (BaseBarnesHut):
         with Parla():
             @spawn()
             async def main():
-                await self.run_bh(n_iterations, check_accuracy)
+                await self.run_bh(check_accuracy)
 
     async def run_bh(self, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
