@@ -87,16 +87,15 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
             @spawn(placement_TS[i], placement=placements[i])
             def particle_placement_task():
-                with Timer.get_handle("placetask"):
-                    # ensure we have the particles and cumm grid
-                    #particles_here = clone_here(pslice)
-                    particles_here = pslice
-                    #cumm = clone_here(grid_cumms[i])
-                    cumm = grid_cumms[i]
-                    # p_place_particles can be called on cpu or gpu
-                    p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
-                    #copy(grid_cumms[i], cumm)
-                    #copy(pslice, particles_here)
+                # ensure we have the particles and cumm grid
+                #particles_here = clone_here(pslice)
+                particles_here = pslice
+                #cumm = clone_here(grid_cumms[i])
+                cumm = grid_cumms[i]
+                # p_place_particles can be called on cpu or gpu
+                p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
+                #copy(grid_cumms[i], cumm)
+                #copy(pslice, particles_here)
 
         post_placement_TS = TaskSpace("post_placement")
         @spawn(post_placement_TS[0], [placement_TS])

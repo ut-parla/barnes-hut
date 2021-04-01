@@ -21,7 +21,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.G = float(Config.get("bh", "grav_constant"))
         self.device_arrays_initd = False
         self.debug = logging.root.level == logging.DEBUG
-        self.threads_per_block = float(Config.get("cuda", "threads_per_block"))
+        self.threads_per_block = int(Config.get("cuda", "threads_per_block"))
 
     def __init_device_arrays(self):
         """ Allocate arrays on the device and copy the particles
@@ -60,16 +60,20 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         self.d_particles = self.d_particles_sort
         self.d_grid_box_count = None
 
+        print(self.d_particles.copy_to_host())
+
     def summarize(self):
         bsize = 16*16
         threads = (16, 16)
         nblocks = (self.grid_dim*self.grid_dim) / bsize
         nblocks = ceil(sqrt(nblocks))
         blocks = (nblocks, nblocks)
-
+        print("cumm ", self.d_grid_box_cumm.copy_to_host())
+        with np.printoptions(edgeitems=50):
+                print(self.d_particles.copy_to_host())
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
-        #print(self.d_COMs.copy_to_host())
+        print(self.d_COMs.copy_to_host())
 
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
@@ -81,7 +85,6 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         blocks = (pblocks, self.grid_dim*self.grid_dim)
         threads = min(self.threads_per_block, self.n_particles)
         logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
-
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
 
     def timestep(self):

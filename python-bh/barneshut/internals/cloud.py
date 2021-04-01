@@ -4,6 +4,7 @@ import threading
 from .config import Config
 import barneshut.internals.particle as p
 from barneshut.kernels.gravity import get_gravity_kernel
+from numba import njit
 
 class Cloud:
     
@@ -98,6 +99,7 @@ class Cloud:
 
         return self.COM
 
+    @njit(fastmath=True)
     def tick_particles(self):
         if self.n == 0:
             return

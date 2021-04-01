@@ -50,8 +50,8 @@ def __evaluate_com_concat(grid):
         if grid[x][y].cloud.is_empty():
             print(f"grid {x}/{y} is empty..")
             continue
-
         self_leaf = grid[x][y]
+        
         neighbors = get_neighbor_cells(cell, len(grid))
         com_cells = []
         for c in product(range(n), range(n)):
@@ -64,15 +64,13 @@ def __evaluate_com_concat(grid):
                 #logging.debug(f"Cell {c} is not neighbor, appending to COM concatenation")
             # for neighbors, store them so we can do direct interaction
             else:
-                print(f"direct interaction of {x}/{y}  -> {x2}/{y2}")
                 self_leaf.apply_force(grid[x2][y2], update_other=False)
                 
         coms = Box.from_list_of_boxes(com_cells, is_COMs=True)
         self_leaf.apply_force(coms, update_other=False)
 
         # we also need to interact with ourself
-        self_leaf.apply_force(self_leaf,  update_other=False)
-
+        self_leaf.apply_force(self_leaf, update_other=False)
 
 def __evaluate_com_concat_dedup(grid):
     n = len(grid)
