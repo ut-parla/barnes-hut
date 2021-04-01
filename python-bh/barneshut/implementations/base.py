@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured as unst
+from numba import njit
 import random
 import logging
 from timer import Timer
@@ -9,6 +10,25 @@ from barneshut.internals import Config
 from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 
 LEAF_OCCUPANCY = 0.7
+
+@njit
+def nsquared_acc_check(particles, samples, G):
+    for i in range(samples.shape[0]):
+        for j in range(particles.shape[0]):
+            # skip self to self
+            sample_id = samples[i, p.pid]
+            if sample_id == j:
+                continue
+            p1_p    = samples[i, p.px:p.py+1]
+            p1_mass = samples[i, p.mass]
+            p2_p    = particles[j, p.px:p.py+1]
+            p2_mass = particles[j, p.mass]
+            dif = p1_p - p2_p
+            dist = np.sqrt(np.sum(np.square(dif)))
+            f = (G * p1_mass * p2_mass) / (dist*dist)
+
+            samples[i, p.ax] -= f * dif[0] / p1_mass
+            samples[i, p.ay] -= f * dif[1] / p1_mass
 
 class BaseBarnesHut:
 
@@ -126,44 +146,23 @@ class BaseBarnesHut:
         After the implementation runs, we compare.
         """
         particles = self.get_particles()
-        samples = {}
-
+        samples_nd = np.zeros((len(sample_indices), p.nfields))
         # copy sampled particles so we can modify them
-        for i in sample_indices:
-            samples[i] = particles[i].copy()
-            samples[i][p.ax] = 0
-            samples[i][p.ay] = 0
-
+        for i, si in enumerate(sample_indices):
+            samples_nd[i] = particles[si].copy()
+            samples_nd[i, p.ax] = 0
+            samples_nd[i, p.ay] = 0
+            
         G = float(Config.get("bh", "grav_constant"))
         # for each particle, do the n^2 algorithm
-        for i in sample_indices:
-            for j in range(len(particles)):
-                # skip self to self
-                if i == j:
-                    continue
-                p1_p    = samples[i][p.px:p.py+1]
-                p1_mass = samples[i][p.mass]
-                p2_p    = particles[j][p.px:p.py+1]
-                p2_mass = particles[j][p.mass]
-                dif = p1_p - p2_p
-                dist = np.sqrt(np.sum(np.square(dif)))
-                f = (G * p1_mass * p2_mass) / (dist*dist)
+        nsquared_acc_check(particles, samples_nd, G)
+        logging.debug(f"n^2 algo for particle {i}: {samples_nd[:,p.ax:p.ay+1]}")
 
-                samples[i][p.ax] -= f * dif[0] / p1_mass
-                samples[i][p.ay] -= f * dif[1] / p1_mass
+        samples = {}
+        for i in range(samples_nd.shape[0]):
+            pid = samples_nd[i, p.pid]
+            samples[pid] = samples_nd[i].copy()
 
-            logging.debug(f"n^2 algo for particle {i}: {samples[i][p.ax]}/{samples[i][p.ay]}")
-
-        # we are comparing acceleration, so we dont need this
-        # tick = float(Config.get("bh", "tick_seconds"))
-        # for i in sample_indices:
-        #     logging.debug(f"sample {i}, changing px from {samples[i][p.vx]} to {samples[i][p.vx]+samples[i][p.ax] * tick}")
-        #     samples[i][p.vx] += samples[i][p.ax] * tick
-        #     samples[i][p.vy] += samples[i][p.ay] * tick
-        #     samples[i][p.ax] = 0.0
-        #     samples[i][p.ay] = 0.0
-        #     samples[i][p.px] += samples[i][p.vx] * tick
-        #     samples[i][p.py] += samples[i][p.vy] * tick
         return samples
 
     def check_accuracy(self, sample_indices, nsquared_sample):

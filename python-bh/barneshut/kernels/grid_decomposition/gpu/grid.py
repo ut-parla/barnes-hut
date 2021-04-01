@@ -87,7 +87,7 @@ def g_summarize(particles, grid_box_cumm, grid_dim, COMs):
         start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
         end = grid_box_cumm[my_x, my_y]
 
-        print(f"box ", my_x, "/", my_y, "  start/end ", start, " ", end)
+        #print(f"box ", my_x, "/", my_y, "  start/end ", start, " ", end)
 
         COMs[my_x][my_y][0] = 0
         COMs[my_x][my_y][1] = 0
