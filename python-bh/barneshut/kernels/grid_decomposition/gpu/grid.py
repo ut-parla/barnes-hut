@@ -126,21 +126,27 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     end = grid_box_cumm[my_x, my_y]
     n = end-start
     tid = cuda.grid(1)
+    tsize = cuda.gridsize(1)
+    wraps = 0
 
-    if tid < n:
+    pidx = tid + (wraps*tsize)
+    while pidx < n:
         for gx in range(grid_dim): 
             for gy in range(grid_dim):
                 # self to self
                 if gx == my_x and gy == my_y:
-                    d_self_self_grav(particles, start, end, G)
+                    d_self_self_grav(particles, start, end, G, wraps)
                 # neighbors, direct p2p interaction
                 elif d_is_neighbor(my_x, my_y, gx, gy):
                     other_end = grid_box_cumm[gx, gy]
                     other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
-                    d_self_other_grav(particles, start, end, other_start, other_end, G)
+                    d_self_other_grav(particles, start, end, other_start, other_end, G, wraps)
                 # not neighbor, use COM
                 else:
-                    d_self_COM_grav(particles, start, end, COMs, gx, gy, G)
+                    d_self_COM_grav(particles, start, end, COMs, gx, gy, G, wraps)
+        wraps += 1
+        pidx = tid + (wraps*tsize)
+
 
 @cuda.jit
 def g_tick_particles(particles, tick):
@@ -195,10 +201,12 @@ def d_previous_box_count(grid_box, gx, gy, grid_dim):
     return grid_box[x, y]
 
 @cuda.jit(device=True)
-def d_self_self_grav(particles, start, end, G):    
+def d_self_self_grav(particles, start, end, G, wraps):    
     tid = cuda.grid(1)
-    pid = start+tid
-    n = end-start
+    tsize = cuda.gridsize(1)
+    
+    pidx = tid + (wraps*tsize)
+    pid = start+pidx
 
     #we already checked tid < n
     # we are particle tid
@@ -217,10 +225,11 @@ def d_self_self_grav(particles, start, end, G):
             particles[pid, p.ay] -= (f * ydif / my_mass)
 
 @cuda.jit(device=True)
-def d_self_other_grav(particles, start, end, other_start, other_end, G):
+def d_self_other_grav(particles, start, end, other_start, other_end, G, wraps):
     tid = cuda.grid(1)
-    pid = start+tid
-    n = end-start
+    tsize = cuda.gridsize(1)
+    pidx = tid + (wraps*tsize)
+    pid = start+pidx
 
     my_x = particles[pid, p.px]
     my_y = particles[pid, p.py]
@@ -235,24 +244,23 @@ def d_self_other_grav(particles, start, end, other_start, other_end, G):
         particles[pid, p.ay] -= (f * ydif / my_mass)
 
 @cuda.jit(device=True)
-def d_self_COM_grav(particles, start, end, COMs, cx, cy, G):
+def d_self_COM_grav(particles, start, end, COMs, cx, cy, G, wraps):
     tid = cuda.grid(1)
-    pid = start+tid
-    n = end-start
+    tsize = cuda.gridsize(1)
+    pidx = tid + (wraps*tsize)
+    pid = start+pidx
 
-    # we are particle tid
-    if tid < n:
-        my_x, my_y = particles[pid, p.px], particles[pid, p.py]
-        my_mass = particles[pid, p.mass]
-        com_x, com_y = COMs[cx, cy, 0], COMs[cx, cy, 1]
-        com_mass = COMs[cx, cy, 2]
+    my_x, my_y = particles[pid, p.px], particles[pid, p.py]
+    my_mass = particles[pid, p.mass]
+    com_x, com_y = COMs[cx, cy, 0], COMs[cx, cy, 1]
+    com_mass = COMs[cx, cy, 2]
 
-        xdif, ydif = my_x-com_x, my_y-com_y
-        dist = (xdif*xdif + ydif*ydif)**0.5
-        f = (G * my_mass * com_mass) / (dist*dist)
-        # update only ourselves since the other will calc to us
-        particles[pid, p.ax] -= (f * xdif / my_mass)
-        particles[pid, p.ay] -= (f * ydif / my_mass)
+    xdif, ydif = my_x-com_x, my_y-com_y
+    dist = (xdif*xdif + ydif*ydif)**0.5
+    f = (G * my_mass * com_mass) / (dist*dist)
+    # update only ourselves since the other will calc to us
+    particles[pid, p.ax] -= (f * xdif / my_mass)
+    particles[pid, p.ay] -= (f * ydif / my_mass)
 
 #######################################################################
 #
@@ -261,29 +269,31 @@ def d_self_COM_grav(particles, start, end, COMs, cx, cy, G):
 #######################################################################
 
 @cuda.jit(device=True)
-def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G):
-    n = end-start
+def d_self_other_mgpu_neighbor_grav(particles, start, end, neighbors, ns, ne, G, wraps):
     tid = cuda.grid(1)
-    pid = start+tid
+    tsize = cuda.gridsize(1)
+    pidx = tid + (wraps*tsize)
+    pid = start+pidx
 
-    if tid < n:
-        my_x = particles[pid, p.px]
-        my_y = particles[pid, p.py]
-        my_mass = particles[pid, p.mass]
-        for i in range(ns, ne):
-            ox, oy = neighbors[i, p.px], neighbors[i, p.py]
-            xdif, ydif = my_x-ox, my_y-oy
-            dist = (xdif*xdif + ydif*ydif)**0.5
-            f = (G * my_mass * neighbors[i, p.mass]) / (dist*dist)
-            # update only ourselves since the other will calc to us
-            particles[pid, p.ax] -= (f * xdif / my_mass)
-            particles[pid, p.ay] -= (f * ydif / my_mass)
-            #print("remote_neighbor updating  ", pid, " id ", particles[pid, p.pid])
+    my_x = particles[pid, p.px]
+    my_y = particles[pid, p.py]
+    my_mass = particles[pid, p.mass]
+    for i in range(ns, ne):
+        ox, oy = neighbors[i, p.px], neighbors[i, p.py]
+        xdif, ydif = my_x-ox, my_y-oy
+        dist = (xdif*xdif + ydif*ydif)**0.5
+        f = (G * my_mass * neighbors[i, p.mass]) / (dist*dist)
+        # update only ourselves since the other will calc to us
+        particles[pid, p.ax] -= (f * xdif / my_mass)
+        particles[pid, p.ay] -= (f * ydif / my_mass)
+        #print("remote_neighbor updating  ", pid, " id ", particles[pid, p.pid])
 
 @cuda.jit(device=True)
-def d_self_self_grav_mgpu(particles, start, end, G):    
+def d_self_self_grav_mgpu(particles, start, end, G, wraps):    
     tid = cuda.grid(1)
-    pid = start+tid
+    tsize = cuda.gridsize(1)
+    pidx = tid + (wraps*tsize)
+    pid = start+pidx
 
     # we are particle tid
     my_x = particles[pid, p.px]
@@ -331,20 +341,25 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
     equal to the max # of particles in a box
     """
     box_idx = cuda.blockIdx.y
-    tid = cuda.grid(1)
     gx, gy = my_boxes[box_idx]
+
     start, end = grid_ranges[gx, gy]
     start -= offset
     end -= offset
     n = end-start
 
-    if n > 0 and tid < n:
+    tid = cuda.grid(1)
+    tsize = cuda.gridsize(1)
+    wraps = 0
+
+    pidx = tid + (wraps*tsize)
+    while pidx < n:
         # for each other grid cell
         for other_gx in range(grid_dim): 
             for other_gy in range(grid_dim):
                 # self to self
                 if gx == other_gx and gy == other_gy:
-                    d_self_self_grav_mgpu(particles, start, end, G)
+                    d_self_self_grav_mgpu(particles, start, end, G, wraps)
                 # neighbors, direct p2p interaction
                 elif d_is_neighbor(other_gx, other_gy, gx, gy):
                     ns = cn_ranges[other_gx, other_gy, 0]
@@ -356,11 +371,11 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
                         ostart -= offset
                         oend -= offset
                         #print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
-                        d_self_other_grav(particles, start, end, ostart, oend, G)
+                        d_self_other_grav(particles, start, end, ostart, oend, G, wraps)
                      # if not, it's from another GPU, so we need to use the indices
                     else:
                         #print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
-                        d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G)
+                        d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G, wraps)
                 ## not neighbor, use COM
                 else:
-                    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G)
+                    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G, wraps)
