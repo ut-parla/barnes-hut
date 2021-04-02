@@ -13,14 +13,9 @@ import barneshut.internals.particle as p
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-#
-# TODO: Need to find a way of having a thread per GPU in a way that doesn't
-# make them possibly switch gpu context to a different one across calls.
-# a.k.a. each thread is pinned to one context. 
-# answer is probably queues and threads listening
-#
+MAX_X_BLOCKS = 65535
+#max is 65535
 
-# Inherit single gpu since we have some common stuff
 class MultiGPUBarnesHut (BaseBarnesHut):
 
     def __init__(self):
@@ -105,6 +100,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
             #run kernel
             blocks = ceil((self.end-self.start) / self.threads_per_block)
+            blocks = min(blocks, MAX_X_BLOCKS)
             threads = self.threads_per_block
             logging.debug(f"launching {blocks} {threads} kernels")
             g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
@@ -190,12 +186,17 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def evaluate(self, grid_ranges):
             # because of the limits of a block, we can't do one block per box, so let's spread
             # the boxes into the x axis, and use the y axis to have more than 1024 threads 
-            pblocks = ceil((self.end-self.start)/self.threads_per_block)
             d_cells = cuda.to_device(self.grid_boxes)
-            blocks = (pblocks, len(d_cells))
+
+            pblocks = ceil((self.end-self.start)/self.threads_per_block)
+            pblocks = min(pblocks, MAX_X_BLOCKS)
+            gblocks = min(len(d_cells), MAX_X_BLOCKS)
+
+            blocks = (pblocks, gblocks)
             threads = self.threads_per_block
             offset = self.start
 
+            print(f"Running evaluate kernel with {len(d_cells)} boxes, blocks: {blocks}   threads {threads}")
             g_evaluate_parla_multigpu[blocks, threads](self.d_particles, self.grid_boxes, grid_ranges, offset, self.grid_dim, 
                 self.d_COMs, self.d_neighbors_indices, self.d_neighbors, self.G)
 

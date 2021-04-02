@@ -120,32 +120,41 @@ def g_evaluate_boxes(particles, grid_dim, grid_box_cumm, COMs, G):
     Let's do the easy thing: launch one block per box in the grid, launch threads
     equal to the max # of particles in a box
     """
-    my_y = int(cuda.blockIdx.y / grid_dim)
-    my_x = cuda.blockIdx.y - (my_y*grid_dim)
-    start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
-    end = grid_box_cumm[my_x, my_y]
-    n = end-start
-    tid = cuda.grid(1)
-    tsize = cuda.gridsize(1)
-    wraps = 0
+    current_g = cuda.blockIdx.y
+    wraps_grid = cuda.gridDim.y
+    total_boxes = grid_dim*grid_dim
+    
+    while current_g < total_boxes:
+        my_y = int(current_g / grid_dim)
+        my_x = current_g - (my_y*grid_dim)
 
-    pidx = tid + (wraps*tsize)
-    while pidx < n:
-        for gx in range(grid_dim): 
-            for gy in range(grid_dim):
-                # self to self
-                if gx == my_x and gy == my_y:
-                    d_self_self_grav(particles, start, end, G, wraps)
-                # neighbors, direct p2p interaction
-                elif d_is_neighbor(my_x, my_y, gx, gy):
-                    other_end = grid_box_cumm[gx, gy]
-                    other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
-                    d_self_other_grav(particles, start, end, other_start, other_end, G, wraps)
-                # not neighbor, use COM
-                else:
-                    d_self_COM_grav(particles, start, end, COMs, gx, gy, G, wraps)
-        wraps += 1
+        start = d_previous_box_count(grid_box_cumm, my_x, my_y, grid_dim)
+        end = grid_box_cumm[my_x, my_y]
+        n = end-start
+        tid = cuda.grid(1)
+        tsize = cuda.gridsize(1)
+        wraps = 0
+
         pidx = tid + (wraps*tsize)
+        while pidx < n:
+            for gx in range(grid_dim): 
+                for gy in range(grid_dim):
+                    # self to self
+                    if gx == my_x and gy == my_y:
+                        d_self_self_grav(particles, start, end, G, wraps)
+                    # neighbors, direct p2p interaction
+                    elif d_is_neighbor(my_x, my_y, gx, gy):
+                        other_end = grid_box_cumm[gx, gy]
+                        other_start = d_previous_box_count(grid_box_cumm, gx, gy, grid_dim)
+                        d_self_other_grav(particles, start, end, other_start, other_end, G, wraps)
+                    # not neighbor, use COM
+                    else:
+                        d_self_COM_grav(particles, start, end, COMs, gx, gy, G, wraps)
+            #wrap around particles
+            wraps += 1
+            pidx = tid + (wraps*tsize)
+        #wrap around grid boxes
+        current_g += wraps_grid
 
 
 @cuda.jit
@@ -204,12 +213,9 @@ def d_previous_box_count(grid_box, gx, gy, grid_dim):
 def d_self_self_grav(particles, start, end, G, wraps):    
     tid = cuda.grid(1)
     tsize = cuda.gridsize(1)
-    
     pidx = tid + (wraps*tsize)
     pid = start+pidx
 
-    #we already checked tid < n
-    # we are particle tid
     my_x = particles[pid, p.px]
     my_y = particles[pid, p.py]
     my_mass = particles[pid, p.mass]
@@ -340,42 +346,48 @@ def g_evaluate_parla_multigpu(particles, my_boxes, grid_ranges, offset, grid_dim
     Let's do the easy thing: launch one block per box in the grid, launch threads
     equal to the max # of particles in a box
     """
+    wraps_grid = cuda.gridDim.y
     box_idx = cuda.blockIdx.y
-    gx, gy = my_boxes[box_idx]
 
-    start, end = grid_ranges[gx, gy]
-    start -= offset
-    end -= offset
-    n = end-start
+    while box_idx < len(my_boxes):
+        gx, gy = my_boxes[box_idx]
+        box_idx += wraps_grid
 
-    tid = cuda.grid(1)
-    tsize = cuda.gridsize(1)
-    wraps = 0
+        start, end = grid_ranges[gx, gy]
+        start -= offset
+        end -= offset
+        n = end-start
 
-    pidx = tid + (wraps*tsize)
-    while pidx < n:
-        # for each other grid cell
-        for other_gx in range(grid_dim): 
-            for other_gy in range(grid_dim):
-                # self to self
-                if gx == other_gx and gy == other_gy:
-                    d_self_self_grav_mgpu(particles, start, end, G, wraps)
-                # neighbors, direct p2p interaction
-                elif d_is_neighbor(other_gx, other_gy, gx, gy):
-                    ns = cn_ranges[other_gx, other_gy, 0]
-                    ne = cn_ranges[other_gx, other_gy, 1]
-                    # if both are zero, it's a cell from our GPU
-                    #print("ns ne ", ns, " ", ne)
-                    if ns == 0 and ne == 0:
-                        ostart, oend = grid_ranges[other_gx, other_gy]
-                        ostart -= offset
-                        oend -= offset
-                        #print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
-                        d_self_other_grav(particles, start, end, ostart, oend, G, wraps)
-                     # if not, it's from another GPU, so we need to use the indices
+        tid = cuda.grid(1)
+        tsize = cuda.gridsize(1)
+        wraps = 0
+
+        pidx = tid + (wraps*tsize)
+        while pidx < n:
+            # for each other grid cell
+            for other_gx in range(grid_dim): 
+                for other_gy in range(grid_dim):
+                    # self to self
+                    if gx == other_gx and gy == other_gy:
+                        d_self_self_grav_mgpu(particles, start, end, G, wraps)
+                    # neighbors, direct p2p interaction
+                    elif d_is_neighbor(other_gx, other_gy, gx, gy):
+                        ns = cn_ranges[other_gx, other_gy, 0]
+                        ne = cn_ranges[other_gx, other_gy, 1]
+                        # if both are zero, it's a cell from our GPU
+                        #print("ns ne ", ns, " ", ne)
+                        if ns == 0 and ne == 0:
+                            ostart, oend = grid_ranges[other_gx, other_gy]
+                            ostart -= offset
+                            oend -= offset
+                            #print("eval neighbor same gpu other, grids: ", gx, "-", gy, "  ", other_gx, "-", other_gy, "  start/end ",  start, "-", end, "   ", ostart, "-", oend)
+                            d_self_other_grav(particles, start, end, ostart, oend, G, wraps)
+                        # if not, it's from another GPU, so we need to use the indices
+                        else:
+                            #print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
+                            d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G, wraps)
+                    ## not neighbor, use COM
                     else:
-                        #print("grid range ", other_gx, "-", other_gy, "  = ", ns, " ", ne)
-                        d_self_other_mgpu_neighbor_grav(particles, start, end, cn_particles, ns, ne, G, wraps)
-                ## not neighbor, use COM
-                else:
-                    d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G, wraps)
+                        d_self_COM_grav(particles, start, end, COMs, other_gx, other_gy, G, wraps)
+            wraps += 1
+            pidx = tid + (wraps*tsize)

@@ -6,6 +6,8 @@ MIN_PARTICLE_MASS = 0.5
 MAX_PARTICLE_MASS = 5
 DOMAIN_SIZE = 500
 
+CHUNK = 100000
+
 class Particle:
     def __init__(self, x, y, mass, xVel, yVel):
         self.x = x
@@ -35,12 +37,15 @@ def main():
     print(f"Using distribution {distribution}")
     num_particles = int(args.num_particles)
 
-    particles = generateParticles(num_particles, distribution)
-
     with open(args.fout, "w") as fp:
         fp.write(f"{num_particles}\n")
-        for p in particles:
-            fp.write(p.to_string())
+        while num_particles != 0:
+            left = min(num_particles, CHUNK)
+            num_particles -= left
+            particles = generateParticles(left, distribution)
+
+            for p in particles:
+                fp.write(p.to_string())
 
 
 def generateParticles(num_particles, distribution):

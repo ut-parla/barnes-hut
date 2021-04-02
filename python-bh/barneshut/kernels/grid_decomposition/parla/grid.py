@@ -13,6 +13,8 @@ from parla.cpu import *
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
+MAX_X_BLOCKS = 64
+#max is 65535
 
 @specialized
 @njit(fastmath=True)
@@ -31,6 +33,7 @@ def p_place_particles(particles, grid_cumm, min_xy, grid_dim, step):
 def p_place_particles_gpu(particles, grid_cumm, min_xy, grid_dim, step):
     threads_per_block = int(Config.get("cuda", "threads_per_block"))
     blocks = ceil(particles.shape[0] / threads_per_block)
+    blocks = min(blocks, MAX_X_BLOCKS)
     threads = threads_per_block
     g_place_particles[blocks, threads](particles, min_xy, step, grid_dim, grid_cumm)
 
@@ -136,10 +139,10 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
     end = grid_ranges[lb_x, lb_y, 1]
     my_particles = particles[start:end]
 
-    pblocks = ceil((end-start)/threads_per_block)
-    blocks = (pblocks, len(my_boxes))
+    pblocks = ceil((end-start)/threads_per_block)    
+    gblocks = min(len(my_boxes), MAX_X_BLOCKS)
+    blocks = (pblocks, gblocks)
     threads = threads_per_block
-
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
 

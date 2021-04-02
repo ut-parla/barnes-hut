@@ -10,6 +10,8 @@ from numba import cuda
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
+MAX_X_BLOCKS = 65535
+#max is 65535
 
 class SingleGPUBarnesHut (BaseBarnesHut):
 
@@ -31,6 +33,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
             # alloc gpu arrays
             #self.d_grid_box_count = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int)
             self.d_grid_box_cumm  = cuda.device_array((self.grid_dim,self.grid_dim), dtype=np.int64)
+            print(f"Allocating {self.particles.nbytes / (1024*1024)} MB on device")
             self.d_particles      = cuda.to_device(self.particles)
             self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float)
             self.device_arrays_initd = True
@@ -49,8 +52,9 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         #call kernel
         blocks = ceil(self.n_particles / self.threads_per_block)
+        blocks = min(blocks, MAX_X_BLOCKS)
         threads = self.threads_per_block
-        print(f"launching placement: {blocks} {threads}")
+        print(f"Running placement kernel with blocks: {blocks}   threads {threads}")
         g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
         g_calculate_box_cumm[1, 1](self.grid_dim, self.d_grid_box_count, self.d_grid_box_cumm)        
@@ -73,13 +77,15 @@ class SingleGPUBarnesHut (BaseBarnesHut):
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
         # the boxes into the y axis, and use the x axis to have more than 1024 threads 
-
         # how many blocs we need to cover all particles
         pblocks = ceil(self.n_particles/self.threads_per_block)
         #one block per box
-        blocks = (pblocks, self.grid_dim*self.grid_dim)
+        pblocks = min(pblocks, MAX_X_BLOCKS)
+        gblocks = min(self.grid_dim*self.grid_dim, MAX_X_BLOCKS)
+
+        blocks = (pblocks, gblocks)
         threads = min(self.threads_per_block, self.n_particles)
-        logging.debug(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
+        print(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
 
     def timestep(self):
