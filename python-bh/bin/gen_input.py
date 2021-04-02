@@ -1,29 +1,16 @@
 #!/usr/bin/env python3
 import argparse
-import random
+from struct import pack
+from numpy.random import default_rng
+rng = default_rng()
 
 MIN_PARTICLE_MASS = 0.5
 MAX_PARTICLE_MASS = 5
 DOMAIN_SIZE = 500
-
 CHUNK = 100000
 
-class Particle:
-    def __init__(self, x, y, mass, xVel, yVel):
-        self.x = x
-        self.y = y
-        self.xVel = xVel
-        self.yVel = yVel
-        self.mass = mass
-
-    def to_string(self):
-        return "{}, {}, {}, {}, {}\n".format(
-            self.x,
-            self.y,
-            self.mass,
-            self.xVel,
-            self.yVel
-        )
+def particle_to_bytes(x, y, mass, xVel, yVel):
+    return pack('ddddd', x, y, mass, xVel, yVel)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,40 +24,34 @@ def main():
     print(f"Using distribution {distribution}")
     num_particles = int(args.num_particles)
 
-    with open(args.fout, "w") as fp:
-        fp.write(f"{num_particles}\n")
+    with open(args.fout, "wb") as fp:
+        fp.write(pack("i", num_particles))
         while num_particles != 0:
             left = min(num_particles, CHUNK)
             num_particles -= left
-            particles = generateParticles(left, distribution)
-
-            for p in particles:
-                fp.write(p.to_string())
-
+            particles_bytes = generateParticles(left, distribution)
+            fp.write(particles_bytes)
 
 def generateParticles(num_particles, distribution):
     max_coord = DOMAIN_SIZE-1
-    particles = []
+    particles_bytes = b''
 
     for _ in range(num_particles):
         if distribution == "normal":
-            x = random.random() * max_coord
-            y = random.random() * max_coord
+            x = rng.random() * max_coord
+            y = rng.random() * max_coord
         elif distribution == "gauss":
             x = random.gauss(max_coord/2, max_coord/12)
             y = random.gauss(max_coord/2, max_coord/12)
 
-        xVel = (random.random()-0.5) * 2
-        yVel = (random.random()-0.5) * 2
-        #angle = random.gauss(math.pi*2, math.pi/2)
-        # xVel = sun.pos.dist(pos) * math.sin(angle)
-        # yVel = sun.pos.dist(pos) * math.cos(angle)
+        xVel = (rng.random()-0.5) * 2
+        yVel = (rng.random()-0.5) * 2
 
         # random mass
-        mass = MIN_PARTICLE_MASS + random.random() * (MAX_PARTICLE_MASS-MIN_PARTICLE_MASS)
-        particles.append(Particle(x, y, mass, xVel, yVel))
+        mass = MIN_PARTICLE_MASS + rng.random() * (MAX_PARTICLE_MASS-MIN_PARTICLE_MASS)
+        particles_bytes += particle_to_bytes(x, y, mass, xVel, yVel)
 
-    return particles
+    return particles_bytes
 
 
 if __name__ == "__main__":

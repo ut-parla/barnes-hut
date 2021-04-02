@@ -1,4 +1,5 @@
 import numpy as np
+import struct
 from numpy.lib.recfunctions import structured_to_unstructured as unst
 from numba import njit
 import random
@@ -11,7 +12,7 @@ from barneshut.kernels.helpers import get_bounding_box, next_perfect_square
 
 LEAF_OCCUPANCY = 0.7
 
-@njit
+#@njit
 def nsquared_acc_check(particles, samples, G):
     for i in range(samples.shape[0]):
         for j in range(particles.shape[0]):
@@ -50,13 +51,35 @@ class BaseBarnesHut:
         from file. The order of things depends on how it was generated,
         see bin/gen_input.py for details.
         """
-        with open(filename) as fp:
-            self.n_particles = int(fp.readline())
+        nsize = struct.calcsize("i")
+        p_fmt = "ddddd"
+        p_len = struct.calcsize(p_fmt)
+        p_unpack = struct.Struct(p_fmt).unpack_from
+
+        with open(filename, "rb") as fp:
+            nb = fp.read(nsize)
+            self.n_particles = struct.unpack("i", nb)[0]
             self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
 
-            # read all lines, one particle per line
             for i in range(self.n_particles):
-                self.particles[i] = p.Particle.particle_from_line(fp.readline())
+                data = fp.read(p_len)
+                pt = p_unpack(data)
+                self.particles[i] = pt + ((0,) * (p.nfields-6)) + (float(i),)
+
+            # particle_id = .0
+            # left = self.n_particles
+            # while left != 0:
+            #     read_size = min(left, CHUNK_READ)
+            #     left -= read_size
+
+            #     data = fp.read(read_size*p_len)
+            #     for i in range(read_size):
+            #         pt = p_unpack(data[i*p_len : (i+1)*p_len])
+            #         self.particles[i] = pt + ((0,) * (p.nfields-6)) + (particle_id,)
+            #         particle_id += 1
+        
+        #import sys
+        #sys.exit(0)
 
     def create_tree(self):
         """Each implementation must have it's own create_tree"""
@@ -152,7 +175,7 @@ class BaseBarnesHut:
             samples_nd[i] = particles[si].copy()
             samples_nd[i, p.ax] = 0
             samples_nd[i, p.ay] = 0
-            
+        
         G = float(Config.get("bh", "grav_constant"))
         # for each particle, do the n^2 algorithm
         nsquared_acc_check(particles, samples_nd, G)

@@ -1,4 +1,4 @@
-from barneshut.internals import Particle, Cloud
+from barneshut.internals import Cloud
 from barneshut.internals.config import Config
 from collections.abc import Iterable
 import numpy as np
