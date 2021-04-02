@@ -314,4 +314,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.call_method_all_cells("terminate")
         for cell in self.gpu_cells.values():
             cell.thread.join()
+        
+        self.device_arrays_initd = False
+        self.gpu_cells_initd = False
+        self.gpu_cells = {}
+        self.grid = None
         logging.debug("done!")

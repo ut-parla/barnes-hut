@@ -13,7 +13,7 @@ from parla.cpu import *
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
-MAX_X_BLOCKS = 64
+MAX_X_BLOCKS = 65535
 #max is 65535
 
 @specialized
