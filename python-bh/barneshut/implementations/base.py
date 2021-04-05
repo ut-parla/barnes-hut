@@ -40,11 +40,9 @@ class BaseBarnesHut:
         self.checking_accuracy = False
         self.sample_size = int(Config.get("general", "sample_check_size"))
         self.particles_per_leaf = int(Config.get("grid", "max_particles_per_box"))
-
-        self.skip_timestep = bool(Config.get("general", "skip_timestep")) 
+        self.skip_timestep = Config.get("general", "skip_timestep") == "True"
         self.evaluation_rounds = int(Config.get("general", "evaluation_rounds")) 
-
-        logging.debug(f"Skiping timestep? {self.skip_timestep}")
+        print(f"Skiping timestep? {self.skip_timestep}")
 
     def read_particles_from_file(self, filename):
         """Read particle coordinates, mass and initial velocity
@@ -54,32 +52,24 @@ class BaseBarnesHut:
         nsize = struct.calcsize("i")
         p_fmt = "ddddd"
         p_len = struct.calcsize(p_fmt)
-        p_unpack = struct.Struct(p_fmt).unpack_from
 
         with open(filename, "rb") as fp:
             nb = fp.read(nsize)
             self.n_particles = struct.unpack("i", nb)[0]
             self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
 
-            for i in range(self.n_particles):
-                data = fp.read(p_len)
-                pt = p_unpack(data)
-                self.particles[i] = pt + ((0,) * (p.nfields-6)) + (float(i),)
+            CHUNK_READ = 10000
+            particle_id = .0
+            left = self.n_particles
+            while left != 0:
+                read_size = min(left, CHUNK_READ)
+                left -= read_size
 
-            # particle_id = .0
-            # left = self.n_particles
-            # while left != 0:
-            #     read_size = min(left, CHUNK_READ)
-            #     left -= read_size
-
-            #     data = fp.read(read_size*p_len)
-            #     for i in range(read_size):
-            #         pt = p_unpack(data[i*p_len : (i+1)*p_len])
-            #         self.particles[i] = pt + ((0,) * (p.nfields-6)) + (particle_id,)
-            #         particle_id += 1
-        
-        #import sys
-        #sys.exit(0)
+                data = fp.read(read_size*p_len)
+                for i in range(read_size):
+                    pt = struct.unpack_from(p_fmt, data, i*p_len)
+                    self.particles[int(particle_id)] = pt + ((0,) * (p.nfields-6)) + (float(particle_id),)
+                    particle_id += 1
 
     def create_tree(self):
         """Each implementation must have it's own create_tree"""

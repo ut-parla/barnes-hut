@@ -6,8 +6,18 @@ import barneshut.internals.particle as p
 from barneshut.kernels.gravity import get_gravity_kernel
 from numba import njit
 
+@njit(fastmath=True)
+def calc_COM(particles):
+    M, acc_x, acc_y = .0, .0, .0
+    for pt in range(particles.shape[0]):
+        mass   = particles[pt, p.mass]
+        acc_x += particles[pt, p.px] * mass
+        acc_y += particles[pt, p.py] * mass
+        M += mass
+    return acc_x/M, acc_y/M, M
+
 class Cloud:
-    
+
     def __init__(self, pre_alloc=None):
         self.max_particles = int(Config.get("grid", "max_particles_per_box"))
         self.COM = None
@@ -16,7 +26,6 @@ class Cloud:
             self.__particles = np.empty((pre_alloc+1,p.nfields), dtype=p.ftype)
         else:
             self.__particles = None
-        self.lock = threading.Lock()
         self.G = float(Config.get("bh", "grav_constant"))
         # Set our kernels
         self.grav_kernel = get_gravity_kernel()
@@ -88,22 +97,14 @@ class Cloud:
             if self.is_empty():
                 data = (0,) * p.nfields
             else:
-                # equations taken from http://hyperphysics.phy-astr.gsu.edu/hbase/cm.html
-                M = np.sum(self.masses)
-                coords = self.positions * self.masses
-                coords = np.add.reduce(coords)
-                coords /= M
-                data = [coords[0], coords[1], M] + [.0] * (p.nfields-3)
+                com = calc_COM(self.particles)
+                data = [com[0], com[1], com[2]] + [.0] * (p.nfields-3)
             point = np.array(data, dtype=p.ftype)
             self.COM.add_particle(point)
-
         return self.COM
 
     @njit(fastmath=True)
-    def tick_particles(self):
-        if self.n == 0:
-            return
-        tick = float(Config.get("bh", "tick_seconds"))
+    def tick_particles(self, tick):
         self.velocities += self.accelerations * tick
         self.accelerations = 0.0               
         #logging.debug(f"changing position of particle from {self.positions[:3]}\nto {self.positions[:3]+self.velocities[:3] * tick}")

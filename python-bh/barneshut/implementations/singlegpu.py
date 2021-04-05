@@ -61,6 +61,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         g_sort_particles[blocks, threads](self.d_particles, self.d_particles_sort, self.d_grid_box_count)
 
+        cuda.synchronize()
         # Swap so original d_particles is deallocated. dealloc d_grid_box_count
         self.d_particles = self.d_particles_sort
         self.d_grid_box_count = None
@@ -73,6 +74,7 @@ class SingleGPUBarnesHut (BaseBarnesHut):
         blocks = (nblocks, nblocks)
         g_summarize[blocks, threads](self.d_particles, self.d_grid_box_cumm, 
                                      self.grid_dim, self.d_COMs)
+        cuda.synchronize()
 
     def evaluate(self):
         # because of the limits of a block, we can't do one block per box, so let's spread
@@ -85,15 +87,17 @@ class SingleGPUBarnesHut (BaseBarnesHut):
 
         blocks = (pblocks, gblocks)
         threads = min(self.threads_per_block, self.n_particles)
-        print(f"Running evaluate kernel with blocks: {blocks}   threads {threads}")
+        print(f"Running evaluate kernel with grid size {self.grid_dim*self.grid_dim}  with blocks: {blocks}   threads {threads}")
         g_evaluate_boxes[blocks, threads](self.d_particles, self.grid_dim, self.d_grid_box_cumm, self.d_COMs, self.G)
+        cuda.synchronize()
 
     def timestep(self):
         tick = float(Config.get("bh", "tick_seconds"))
         blocks = ceil(self.n_particles / self.threads_per_block)
         threads = self.threads_per_block
         g_tick_particles[blocks, threads](self.d_particles, tick)
-
+        cuda.synchronize()
+        
     def ensure_particles_id_ordered(self):
         self.particles = self.d_particles.copy_to_host()
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)

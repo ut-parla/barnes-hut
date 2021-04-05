@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 import argparse
-from struct import pack
+import struct
 from numpy.random import default_rng
 rng = default_rng()
 
 MIN_PARTICLE_MASS = 0.5
 MAX_PARTICLE_MASS = 5
 DOMAIN_SIZE = 500
-CHUNK = 100000
+CHUNK = 10000
 
-def particle_to_bytes(x, y, mass, xVel, yVel):
-    return pack('ddddd', x, y, mass, xVel, yVel)
+p_fmt = "ddddd"
+p_len = struct.calcsize(p_fmt)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,7 +25,7 @@ def main():
     num_particles = int(args.num_particles)
 
     with open(args.fout, "wb") as fp:
-        fp.write(pack("i", num_particles))
+        fp.write(struct.pack("i", num_particles))
         while num_particles != 0:
             left = min(num_particles, CHUNK)
             num_particles -= left
@@ -34,9 +34,9 @@ def main():
 
 def generateParticles(num_particles, distribution):
     max_coord = DOMAIN_SIZE-1
-    particles_bytes = b''
+    particles_bytes = bytearray(num_particles*p_len)
 
-    for _ in range(num_particles):
+    for i in range(num_particles):
         if distribution == "normal":
             x = rng.random() * max_coord
             y = rng.random() * max_coord
@@ -49,10 +49,9 @@ def generateParticles(num_particles, distribution):
 
         # random mass
         mass = MIN_PARTICLE_MASS + rng.random() * (MAX_PARTICLE_MASS-MIN_PARTICLE_MASS)
-        particles_bytes += particle_to_bytes(x, y, mass, xVel, yVel)
+        struct.pack_into(p_fmt, particles_bytes, i*p_len, x, y, mass, xVel, yVel)
 
     return particles_bytes
-
 
 if __name__ == "__main__":
     main()

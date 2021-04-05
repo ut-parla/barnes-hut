@@ -26,7 +26,10 @@ class Box:
         return b
 
     def tick(self):
-        self.cloud.tick_particles()
+        if self.cloud.is_empty:
+            return
+        tick = float(Config.get("bh", "tick_seconds"))
+        self.cloud.tick_particles(tick)
 
     def add_particle_slice(self, pslice):
         self.cloud.add_particle_slice(pslice)

@@ -18,11 +18,6 @@ class SequentialBarnesHut (BaseBarnesHut):
         super().__init__()
         self.grid = None
 
-        # setup functions
-        from barneshut.kernels.grid_decomposition.sequential.grid import \
-            get_grid_placement_fn
-        self.__grid_placement = get_grid_placement_fn()
-
         from barneshut.kernels.grid_decomposition.sequential.evaluation import \
             get_evaluation_fn
         self.__evaluate = get_evaluation_fn()
@@ -34,9 +29,9 @@ class SequentialBarnesHut (BaseBarnesHut):
         self.set_particles_bounding_box()
         self.create_grid_boxes()
 
-        # call kernel to place points
-        # grid placements sets gx, gy to their correct place in the grid
-        self.particles = self.__grid_placement(self.particles, self.min_xy, self.step, self.grid_dim)
+        self.particles[:, p.gx:p.gy+1] = self.particles[:, p.px:p.py+1]
+        self.particles[:, p.gx:p.gy+1] = (self.particles[:, p.gx:p.gy+1] - self.min_xy) / self.step
+        self.particles[:, p.gx:p.gy+1] = np.clip(np.floor(self.particles[:, p.gx:p.gy+1]), 0, self.grid_dim-1)
 
         # sort particles by grid position
         self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")

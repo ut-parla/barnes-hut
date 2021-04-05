@@ -37,6 +37,7 @@ def p_place_particles_gpu(particles, grid_cumm, min_xy, grid_dim, step):
     threads = threads_per_block
     g_place_particles[blocks, threads](particles, min_xy, step, grid_dim, grid_cumm)
 
+
 def previous_box(grid, gx, gy, grid_dim):
     if gx == 0 and gy == 0:
         return 0
@@ -107,7 +108,7 @@ def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
         grid[(x,y)].apply_force(grid[(x,y)], update_other=False)
 
 @p_evaluate.variant(gpu)
-def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
+def p_evaluate_gpu(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
     threads_per_block = int(Config.get("cuda", "threads_per_block"))
     cn = set()
     for box_xy in my_boxes:
@@ -147,3 +148,22 @@ def p_evaluate_gpu(particles, my_boxes, grid, grid_ranges, COMs, G, grid_dim):
                 COMs, cn_ranges, cn_particles, G)
 
     return my_particles
+
+@specialized
+@njit(fastmath=True)
+def p_timestep(particles, tick):
+    for pi in range(particles.shape[0]):
+        particles[pi, p.vx] += particles[pi, p.ax] * tick
+        particles[pi, p.vy] += particles[pi, p.ay] * tick
+        particles[pi, p.ax] = 0
+        particles[pi, p.ay] = 0
+        particles[pi, p.px] += particles[pi, p.vx] * tick
+        particles[pi, p.py] += particles[pi, p.vy] * tick
+
+@p_timestep.variant(gpu)
+def p_timestep(particles, tick):
+    threads_per_block = int(Config.get("cuda", "threads_per_block"))
+    blocks = ceil(particles.shape[0] / threads_per_block)
+    blocks = min(blocks, MAX_X_BLOCKS)
+    threads = threads_per_block
+    g_tick_particles[blocks, threads](particles, tick)

@@ -105,7 +105,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             logging.debug(f"launching {blocks} {threads} kernels")
             g_place_particles[blocks, threads](self.d_particles, self.min_xy, self.step,
                           self.grid_dim, self.d_grid_box_count)
-
+            cuda.synchronize()
             self.d_particles.copy_to_host(self.particles[self.start:self.end])
             with lock:
                 host_grid_count += self.d_grid_box_count.copy_to_host()
@@ -133,6 +133,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             g_summarize_w_ranges[blocks, threads](self.d_particles, self.grid_boxes, offset, grid_ranges, 
                 self.grid_dim, self.d_COMs)
             
+            cuda.synchronize()
             h_COMs = self.d_COMs.copy_to_host()
             with lock:
                 host_COMs += h_COMs
@@ -199,6 +200,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             print(f"Running evaluate kernel with {len(d_cells)} boxes, blocks: {blocks}   threads {threads}")
             g_evaluate_parla_multigpu[blocks, threads](self.d_particles, self.grid_boxes, grid_ranges, offset, self.grid_dim, 
                 self.d_COMs, self.d_neighbors_indices, self.d_neighbors, self.G)
+            cuda.synchronize()
 
         @notify_when_done
         def copy_into_host_particles(self, host_particles):
@@ -210,8 +212,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             blocks = ceil(self.end-self.start / self.threads_per_block)
             threads = self.threads_per_block
             tick = float(Config.get("bh", "tick_seconds"))
-            #g_tick_particles[blocks, threads](self.d_particles, tick)
-
+            g_tick_particles[blocks, threads](self.d_particles, tick)
+            cuda.synchronize()
+            
     def __init_gpu_cells(self):
         #create the threads if we haven't
         if not self.gpu_cells_initd:
