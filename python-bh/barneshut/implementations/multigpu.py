@@ -9,7 +9,7 @@ from .base import BaseBarnesHut
 from functools import wraps
 from itertools import product
 import barneshut.internals.particle as p
-
+from timer import Timer
 #import kernels
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
@@ -24,7 +24,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         super().__init__()
         self.grid = None
         self.ngpus = int(Config.get("multigpu", "ngpus"))
-        self.device_arrays_initd = False
         self.gpu_cells_initd = False
         self.gpu_cells = {}
         logging.debug(f"GPUs available: {cuda.gpus}")
@@ -72,10 +71,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
                 args[0].done_event.set()
             return wrapper    
 
-        #self.zz = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int)
-        #self.d_grid_box_count = cuda.to_device(self.zz)
-        #self.d_COMs           = cuda.device_array((self.grid_dim,self.grid_dim, 3), dtype=np.float64)
-
         def set_grid_boxes(self, grid_boxes):
             self.grid_boxes = grid_boxes
 
@@ -86,8 +81,24 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
         @notify_when_done
         def terminate(self):
+            #self.d_particles = None
+            #self.d_COMs = None
+            #self.d_neighbors = None
+            #self.d_neighbors_indices = None
             self.keep_running = False
+            from time import sleep
+            sleep(1)
+            cuda.current_context().deallocations.clear()
 
+        @notify_when_done
+        def cleanup(self):
+            self.particles = None
+            self.d_particles = None
+            self.d_COMs = None
+            self.d_neighbors = None
+            self.d_neighbors_indices = None
+            self.d_grid_box_count = None
+            
         @notify_when_done
         def copy_in_place_particles_copy_out(self, host_grid_count, lock):
             """Place particles in the grid, and copy them back to the
@@ -148,7 +159,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             for box in self.grid_boxes:
                 cn |= set(get_neighbor_cells(tuple(box), self.grid_dim))
             cn -= set([(x,y) for x,y in self.grid_boxes])
-            logging.debug(f"GPU {self.resident_gpu}: close neighbors {cn}")
+            #logging.debug(f"GPU {self.resident_gpu}: close neighbors {cn}")
             return cn
 
         @notify_when_done
@@ -200,7 +211,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             print(f"Running evaluate kernel with {len(d_cells)} boxes, blocks: {blocks}   threads {threads}")
             g_evaluate_parla_multigpu[blocks, threads](self.d_particles, self.grid_boxes, grid_ranges, offset, self.grid_dim, 
                 self.d_COMs, self.d_neighbors_indices, self.d_neighbors, self.G)
-            cuda.synchronize()
+            #cuda.synchronize()
 
         @notify_when_done
         def copy_into_host_particles(self, host_particles):
@@ -213,7 +224,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             threads = self.threads_per_block
             tick = float(Config.get("bh", "tick_seconds"))
             g_tick_particles[blocks, threads](self.d_particles, tick)
-            cuda.synchronize()
+            #cuda.synchronize()
             
     def __init_gpu_cells(self):
         #create the threads if we haven't
@@ -256,7 +267,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.grid_count = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int)
         self.grid_ranges = np.empty((self.grid_dim,self.grid_dim, 2), dtype=np.int)
         self.call_method_all_cells("copy_in_place_particles_copy_out", self.grid_count, threading.Lock())
-        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
+        with Timer.get_handle("sort"):
+            print(f"sorting {self.particles.shape[0]}")
+            self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
 
         acc = 0
         for i in range(self.grid_dim):
@@ -289,7 +302,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.call_method_all_cells("summarize_and_collect", self.host_COMs, 
                     threading.Lock(), self.grid_ranges)
         self.call_method_all_cells("store_COMs", self.host_COMs)
-        logging.debug(f"Host COMs: {self.host_COMs}")
+        #logging.debug(f"Host COMs: {self.host_COMs}")
 
     def evaluate(self):
         self.call_method_all_cells("copy_nonresident_neighbors", self.grid_ranges)
@@ -312,14 +325,14 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.particles.view(p.fieldsstr).sort(order=p.idf, axis=0)
 
     def cleanup(self):
-        super().cleanup()
-        logging.debug("Terminating threads...")
-        self.call_method_all_cells("terminate")
-        for cell in self.gpu_cells.values():
-            cell.thread.join()
+        #logging.debug("Terminating threads...")
+        #self.call_method_all_cells("terminate")
+        #for cell in self.gpu_cells.values():
+        #    cell.thread.join()
         
-        self.device_arrays_initd = False
-        self.gpu_cells_initd = False
-        self.gpu_cells = {}
+        self.call_method_all_cells("cleanup")
+
+        #self.gpu_cells_initd = False
+        #self.gpu_cells = {}
         self.grid = None
         logging.debug("done!")

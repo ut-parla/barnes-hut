@@ -229,7 +229,7 @@ class BaseBarnesHut:
         # find next perfect square
         nleaves = next_perfect_square(nleaves)
         self.grid_dim = int(nleaves**0.5)
-        logging.warning(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
+        print(f'''With {LEAF_OCCUPANCY} occupancy, {self.particles_per_leaf} particles per leaf 
                 we need {nleaves} leaves, whose next perfect square is {self.grid_dim}.
                 Grid will be {self.grid_dim}x{self.grid_dim}''')
     

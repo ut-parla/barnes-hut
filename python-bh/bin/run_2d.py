@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os, sys
 import argparse
+from time import sleep
 
 # add path witchery so we can import all modules correctly
 currentdir = os.path.dirname(os.path.realpath(__file__))
@@ -52,6 +53,7 @@ if __name__ == "__main__":
     for _ in range(nwarmups):
         bh.run(check_accuracy=check)
     print("warmup done")
+    sleep(2)
     Timer.reset()
     for _ in range(nruns):
         bh.run(check_accuracy=check)

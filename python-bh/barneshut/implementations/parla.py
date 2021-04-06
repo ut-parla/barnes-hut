@@ -67,61 +67,60 @@ class ParlaBarnesHut (BaseBarnesHut):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
         """
-        with Timer.get_handle("t0"):
-            self.set_particles_bounding_box()
+        #with Timer.get_handle("t0"):
+        self.set_particles_bounding_box()
 
-            cpu_tasks = int(Config.get("parla", "placement_cpu_tasks"))
-            gpu_tasks = int(Config.get("parla", "placement_gpu_tasks"))
-            total_tasks = cpu_tasks + gpu_tasks        
-            logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to calculate particle placement.")
+        cpu_tasks = int(Config.get("parla", "placement_cpu_tasks"))
+        gpu_tasks = int(Config.get("parla", "placement_gpu_tasks"))
+        total_tasks = cpu_tasks + gpu_tasks        
+        logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to calculate particle placement.")
 
-            self.grid_cumm = np.zeros((self.grid_dim, self.grid_dim), dtype=np.int32)
-            grid_cumms = np.zeros((total_tasks, self.grid_dim, self.grid_dim), dtype=np.int32)
-            placement_TS = TaskSpace("particle_placement")
-            
-            placements = []
-            for _ in range(cpu_tasks):
-                placements.append(cpu)
-            for i in range(gpu_tasks):
-                placements.append(gpu(i%self.ngpus))
-
-        with Timer.get_handle("t1"):
-
-            for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
-                @spawn(placement_TS[i], placement=placements[i])
-                def particle_placement_task():
-                    #particles_here = clone_here(pslice)
-                    particles_here = pslice
-                    cumm = grid_cumms[i]
-                    p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
-                    if placements[i] is not cpu:
-                        cuda.synchronize()
-                    #copy(pslice, particles_here)
-
-            await placement_TS
-
-        with Timer.get_handle("t2"):
-            print(f"sorting {self.particles.shape[0]}")
-            self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
+        self.grid_cumm = np.zeros((self.grid_dim, self.grid_dim), dtype=np.int32)
+        grid_cumms = np.zeros((total_tasks, self.grid_dim, self.grid_dim), dtype=np.int32)
+        placement_TS = TaskSpace("particle_placement")
         
-        with Timer.get_handle("t3"):
-            post_placement_TS = TaskSpace("post_placement")
-            #@spawn(post_placement_TS[0], [placement_TS])
-            #def sort_grid_task():
+        placements = []
+        for _ in range(cpu_tasks):
+            placements.append(cpu)
+        for i in range(gpu_tasks):
+            placements.append(gpu(i%self.ngpus))
 
-            self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
-            @spawn(post_placement_TS[1], [placement_TS])
-            def acc_cumm_grid_task():
-                # accumulate all cumm grids
-                for i in range(total_tasks):
-                    self.grid_cumm += grid_cumms[i]
-                acc = 0
-                for i in range(self.grid_dim):
-                    for j in range(self.grid_dim):
-                        self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
-                        acc += self.grid_cumm[i,j]
+        #with Timer.get_handle("t1"):
 
-            await post_placement_TS
+        for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+            @spawn(placement_TS[i], placement=placements[i])
+            def particle_placement_task():
+                #particles_here = clone_here(pslice)
+                particles_here = pslice
+                cumm = grid_cumms[i]
+                p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
+                if placements[i] is not cpu:
+                    cuda.synchronize()
+                #copy(pslice, particles_here)
+
+        #await placement_TS
+        post_placement_TS = TaskSpace("post_placement")
+        #with Timer.get_handle("sort"):
+        # for some reason using stable here is really expensive, maybe it's not using radix
+        @spawn(post_placement_TS[0], [placement_TS])
+        def sort_grid_task():
+            self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
+            
+
+        #with Timer.get_handle("t3"):
+        self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
+        @spawn(post_placement_TS[1], [placement_TS])
+        def acc_cumm_grid_task():
+            # accumulate all cumm grids
+            for i in range(total_tasks):
+                self.grid_cumm += grid_cumms[i]
+            acc = 0
+            for i in range(self.grid_dim):
+                for j in range(self.grid_dim):
+                    self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
+                    acc += self.grid_cumm[i,j]
+
+        await post_placement_TS
 
     async def summarize(self):
         cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
