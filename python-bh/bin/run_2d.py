@@ -57,4 +57,5 @@ if __name__ == "__main__":
     Timer.reset()
     for _ in range(nruns):
         bh.run(check_accuracy=check)
+        sleep(2)
     Timer.print()

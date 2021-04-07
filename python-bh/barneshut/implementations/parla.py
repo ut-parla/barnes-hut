@@ -67,7 +67,6 @@ class ParlaBarnesHut (BaseBarnesHut):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
         """
-        #with Timer.get_handle("t0"):
         self.set_particles_bounding_box()
 
         cpu_tasks = int(Config.get("parla", "placement_cpu_tasks"))
@@ -84,10 +83,12 @@ class ParlaBarnesHut (BaseBarnesHut):
             placements.append(cpu)
         for i in range(gpu_tasks):
             placements.append(gpu(i%self.ngpus))
-
-        #with Timer.get_handle("t1"):
+            #placements.append(gpu)
 
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+            # approximate mem usage
+            #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
+            #@spawn(placement_TS[i], placement=placements[i], memory=memusage)
             @spawn(placement_TS[i], placement=placements[i])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
@@ -106,8 +107,6 @@ class ParlaBarnesHut (BaseBarnesHut):
         def sort_grid_task():
             self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
             
-
-        #with Timer.get_handle("t3"):
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
         @spawn(post_placement_TS[1], [placement_TS])
         def acc_cumm_grid_task():
@@ -133,6 +132,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             placements.append(cpu)
         for i in range(gpu_tasks):
             placements.append(gpu(i%self.ngpus))
+            #placements.append(gpu)
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -146,13 +146,14 @@ class ParlaBarnesHut (BaseBarnesHut):
         # because particles are sorted, and all_boxes is also sorted indices
         # we can assume that a subset of boxes here is contiguous
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
+            #memusage = self.particles[start:end].nbytes * 1.4 if placements[i] is not cpu else 0
+            #@spawn(summarize_TS[i], placement=placements[i], memory=memusage)
             @spawn(summarize_TS[i], placement=placements[i])
             def summarize_task():
-                #print(f"task {i} summarizing {len(box_range)} boxes")
                 fb_x, fb_y = box_range[0]
                 lb_x, lb_y = box_range[-1]
                 start = self.grid_ranges[fb_x, fb_y, 0]
-                end = self.grid_ranges[lb_x, lb_y, 1]             
+                end = self.grid_ranges[lb_x, lb_y, 1]   
                 particle_slice = self.particles[start:end]
                 p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
                 if placements[i] is not cpu:
@@ -161,14 +162,19 @@ class ParlaBarnesHut (BaseBarnesHut):
         # accumulate COMs
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
-        #print("task coms: ", self.COMs)
 
     async def evaluate(self):
         cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "evaluation_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
         logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to evaluate.")
-        G = float(Config.get("bh", "grav_constant"))
+
+        placements = []
+        for _ in range(cpu_tasks):
+            placements.append(cpu)
+        for i in range(gpu_tasks):
+            placements.append(gpu(i%self.ngpus))
+            #placements.append(gpu)
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -182,78 +188,24 @@ class ParlaBarnesHut (BaseBarnesHut):
                 x, y = box
                 start, end = self.grid_ranges[x, y]
                 grid[(x,y)] = Cloud.from_slice(self.particles[start:end])
-                #save grid for timestep
-                self.grid = grid
 
-        #each CPU will get around 2% of the tasks one GPU will
-        CPU_GPU_TASK_RATIO = 0.0002
-        if cpu_tasks > 0 and gpu_tasks > 0:
-            cpu_ratio = CPU_GPU_TASK_RATIO * cpu_tasks
-            cpu_ratio = cpu_ratio/gpu_tasks
-            gpu_ratio = 1.0 - cpu_ratio
-        elif cpu_tasks > 0 and gpu_tasks == 0:
-            cpu_ratio = 1.0
-            gpu_ratio = 0
-        elif cpu_tasks == 0 and gpu_tasks > 0:
-            cpu_ratio = 0
-            gpu_ratio = 1.0
-
-        cpu_nboxes = ceil(cpu_ratio * len(all_boxes))
-        gpu_nboxes = len(all_boxes) - cpu_nboxes
-        logging.debug(f"Evaluation: CPU will evaluate {cpu_nboxes} boxes ({cpu_nboxes/cpu_tasks if cpu_tasks is not 0 else 0} each)")
-        logging.debug(f"GPUs will evaluate {gpu_nboxes} boxes ({gpu_nboxes/gpu_tasks if gpu_tasks is not 0 else 0} each)")
-
+        G = float(Config.get("bh", "grav_constant"))
         eval_TS = TaskSpace("evaluate")
-    
-        #start cpu tasks
-        if cpu_tasks > 0:
-            for i, box_range in enumerate(np.array_split(all_boxes[:cpu_nboxes], cpu_tasks)):
-                @spawn(eval_TS[i], placement=cpu)
-                def evaluate_task():
-                    #with Timer.get_handle("eval_cpu"):
-                    p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-
-        #start gpu tasks
-        if gpu_tasks > 0:
-            for i, box_range in enumerate(np.array_split(all_boxes[cpu_nboxes:], gpu_tasks)):
-                @spawn(eval_TS[i+cpu_tasks], placement=gpu(i%self.ngpus))
-                def evaluate_task_gpu():
-                    #with Timer.get_handle("eval_gpu"):
-                    fb_x, fb_y = box_range[0]
-                    lb_x, lb_y = box_range[-1]
-                    start = self.grid_ranges[fb_x, fb_y, 0]
-                    end = self.grid_ranges[lb_x, lb_y, 1]
-                    mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-                    cuda.synchronize()
+        for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
+            #approximate 140% of particles
+            #memusage = self.particles[start:end].nbytes * 2 if placements[i] is not cpu else 0
+            #@spawn(eval_TS[i], placement=placements[i], memory=memusage)
+            @spawn(eval_TS[i], placement=placements[i])
+            def evaluate_task():
+                fb_x, fb_y = box_range[0]
+                lb_x, lb_y = box_range[-1]
+                start = self.grid_ranges[fb_x, fb_y, 0]
+                end = self.grid_ranges[lb_x, lb_y, 1]
+                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                if placements[i] is not cpu:
                     copy(self.particles[start:end], mod_particles)
-
-            # from time import sleep    
-            # from timeit import default_timer as timer
-            # import statistics
-            # count = 1
-            # warmups = 0
-            # truns = 1
-            # maxboxes = 2048
-            # name = "gpu" if placements[i] is not cpu else "cpu"
-            # while (count/2) != maxboxes:
-            #     btasks = box_range[:count]
-            #     print(f"running {name} w/ {len(btasks)} boxes")
-            #     ts = []
-            #     for it in range(truns):
-            #         t0 = timer()
-            
-            #         mod_particles = p_evaluate(self.particles, btasks, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-            
-            #         elapsed = timer() - t0
-                    
-            #         if it >= warmups:
-            #             ts.append(elapsed)
-            #         sleep(0.5)
-            #     print(f"{name}_{len(btasks)}boxes, {statistics.mean(ts)}")
-            #     count = count*2
-
         await eval_TS
-        
+
     async def timestep(self):
         cpu_tasks = int(Config.get("parla", "timestep_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "timestep_gpu_tasks"))
@@ -266,15 +218,16 @@ class ParlaBarnesHut (BaseBarnesHut):
             placements.append(cpu)
         for i in range(gpu_tasks):
             placements.append(gpu(i%self.ngpus))
+            #placements.append(gpu)
 
         timestep_TS = TaskSpace("timestep")        
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+            #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
+            #@spawn(timestep_TS[i], placement=placements[i], memory=memusage)
             @spawn(timestep_TS[i], placement=placements[i])
             def timestep_task():
                 particles_here = pslice
                 p_timestep(particles_here, tick)
-                if placements[i] is not cpu:
-                    cuda.synchronize()
 
         await timestep_TS
 

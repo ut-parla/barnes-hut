@@ -147,6 +147,7 @@ def p_evaluate_gpu(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
     g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
 
+    cuda.synchronize()
     return my_particles
 
 @specialized
@@ -167,3 +168,4 @@ def p_timestep(particles, tick):
     blocks = min(blocks, MAX_X_BLOCKS)
     threads = threads_per_block
     g_tick_particles[blocks, threads](particles, tick)
+    cuda.synchronize()
