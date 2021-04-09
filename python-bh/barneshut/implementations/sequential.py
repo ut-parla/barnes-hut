@@ -56,7 +56,6 @@ class SequentialBarnesHut (BaseBarnesHut):
         for i in range(n):
             for j in range(n):
                 self.grid[i][j].get_COM()
-                #print(self.grid[i][j].get_COM().particles[:, p.px:p.mass+1])
 
     def evaluate(self):   
         self.__evaluate(self.grid)

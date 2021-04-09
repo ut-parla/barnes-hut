@@ -4,12 +4,10 @@ from barneshut.internals import Config
 from barneshut.grid_decomposition import Box
 from barneshut.kernels.helpers import get_bounding_box, get_neighbor_cells, remove_bottom_left_neighbors
 
-#
 #  TODO: currently only __evaluate_com_concat_dedup checks if a box is empty. need to implement
 # this to other functions if we need to use them because an error occurs for a lot of particles in
 # small leaves. This happens because some boxes become empty and there is no checking above these
 # functions.
-#
 
 eval_fn = None   
 def get_evaluation_fn():

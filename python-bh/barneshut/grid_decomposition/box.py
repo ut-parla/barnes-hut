@@ -14,8 +14,6 @@ class Box:
 
     @staticmethod
     def from_list_of_boxes(boxes, is_COMs=False):
-        # TODO: fix this passing around of kernels. we need a singleton or something
-
         b = Box((-1,-1), (-1,-1))
         b.cloud = Cloud(pre_alloc=len(boxes))
         b.is_COMs = is_COMs
