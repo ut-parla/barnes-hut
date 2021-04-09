@@ -267,9 +267,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         self.grid_count = np.zeros((self.grid_dim,self.grid_dim), dtype=np.int)
         self.grid_ranges = np.empty((self.grid_dim,self.grid_dim, 2), dtype=np.int)
         self.call_method_all_cells("copy_in_place_particles_copy_out", self.grid_count, threading.Lock())
-        with Timer.get_handle("sort"):
-            print(f"sorting {self.particles.shape[0]}")
-            self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
+        self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf], axis=0, kind="stable")
 
         acc = 0
         for i in range(self.grid_dim):

@@ -9,6 +9,7 @@ from parla.tasks import *
 from parla.function_decorators import *
 from parla.cuda import *
 from parla.cpu import *
+from timer import Timer
 
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
@@ -74,38 +75,37 @@ def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_di
 
 @specialized
 def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
+    concatenated_COMs = np.empty((grid_dim*grid_dim, 3))
     for box in my_boxes:
-        x, y = box
-        if grid[(x,y)].is_empty():
-            continue
+        with Timer.get_handle("box"):
+            x, y = box
+            if grid[(x,y)].is_empty():
+                continue
 
-        neighbors = get_neighbor_cells((x,y), grid_dim)
-        com_boxes = []
-        for ox in range(grid_dim):
-            for oy in range(grid_dim):
-                other_box = (ox, oy)
-                # if box is empty, just skip it
-                if grid[other_box].is_empty() or (x==ox and y==oy):
-                    continue
-                if other_box not in neighbors:
-                    com_boxes.append(other_box)
+            with Timer.get_handle("ccomappend_neighbors"):
 
-        concatenated_COMs = np.empty((len(com_boxes), 3))
-        for i, cb in enumerate(com_boxes):
-            cx, cy = cb
-            concatenated_COMs[i] = COMs[cx, cy]
+                neighbors = get_neighbor_cells((x,y), grid_dim)
+                com_count = 0
+                for ox in range(grid_dim):
+                    for oy in range(grid_dim):
+                        other_box = (ox, oy)
+                        # if box is empty, just skip it
+                        if grid[other_box].is_empty() or (x==ox and y==oy):
+                            continue
+                        if other_box not in neighbors:
+                            concatenated_COMs[com_count] = COMs[ox, oy]
+                            com_count += 1
+                        # interact with neighbors
+                        else:
+                            grid[(x,y)].apply_force(grid[(ox,oy)], update_other=False)
 
-        CCOMS = Cloud.from_slice(concatenated_COMs)
-        # interact with non-neighbors
-        grid[(x,y)].apply_force(CCOMS, update_other=False)
+            with Timer.get_handle("ccom_self"):
+                CCOMS = Cloud.from_slice(concatenated_COMs[:com_count])
+                # interact with non-neighbors
+                grid[(x,y)].apply_force(CCOMS, update_other=False)
 
-        # interact with neighbors
-        for n in neighbors:
-            ox, oy = n
-            grid[(x,y)].apply_force(grid[(ox,oy)], update_other=False)
-
-        # we also need to interact with ourself
-        grid[(x,y)].apply_force(grid[(x,y)], update_other=False)
+                # we also need to interact with ourself
+                grid[(x,y)].apply_force(grid[(x,y)], update_other=False)
 
 @p_evaluate.variant(gpu)
 def p_evaluate_gpu(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):

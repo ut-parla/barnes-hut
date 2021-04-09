@@ -30,7 +30,8 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.grid_cumm = None
         self.ngpus = int(Config.get("parla", "gpus_available"))
 
-    def run(self,  check_accuracy=False):
+    def run(self,  check_accuracy=False, suffix=''):
+        self.suffix = suffix
         with Parla():
             @spawn()
             async def main():
@@ -43,19 +44,19 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
             sample_indices = self.generate_sample_indices()
-        with Timer.get_handle("end-to-end"):
+        with Timer.get_handle("end-to-end"+self.suffix):
             for _ in range(n_iterations):
                 if self.checking_accuracy:
                     nsquared_sample = self.preround_accuracy_check(sample_indices)
-                with Timer.get_handle("grid_creation"):
+                with Timer.get_handle("grid_creation"+self.suffix):
                     await self.create_tree()
-                with Timer.get_handle("summarization"):
+                with Timer.get_handle("summarization"+self.suffix):
                     await self.summarize()
                 for _ in range(self.evaluation_rounds):
-                    with Timer.get_handle("evaluation"):
+                    with Timer.get_handle("evaluation"+self.suffix):
                         await self.evaluate()
                 if not self.skip_timestep:
-                    with Timer.get_handle("timestep"):
+                    with Timer.get_handle("timestep"+self.suffix):
                         await self.timestep()
                 if self.checking_accuracy:
                     self.ensure_particles_id_ordered()
@@ -164,6 +165,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             self.COMs += tasks_COMs[i]
 
     async def evaluate(self):
+        #with Timer.get_handle("t0"):
         cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "evaluation_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
@@ -192,15 +194,16 @@ class ParlaBarnesHut (BaseBarnesHut):
         G = float(Config.get("bh", "grav_constant"))
         eval_TS = TaskSpace("evaluate")
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
-            #approximate 140% of particles
-            #memusage = self.particles[start:end].nbytes * 2 if placements[i] is not cpu else 0
+            #memusage = self.particles[start:end].nbytes * 1.4 if placements[i] is not cpu else 0
             #@spawn(eval_TS[i], placement=placements[i], memory=memusage)
+            #approximate 140% of particles
             @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
                 fb_x, fb_y = box_range[0]
                 lb_x, lb_y = box_range[-1]
                 start = self.grid_ranges[fb_x, fb_y, 0]
                 end = self.grid_ranges[lb_x, lb_y, 1]
+                print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
                 if placements[i] is not cpu:
                     copy(self.particles[start:end], mod_particles)
