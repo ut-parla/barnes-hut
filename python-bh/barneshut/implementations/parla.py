@@ -85,28 +85,31 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i in range(gpu_tasks):
             placements.append(gpu(i%self.ngpus))
             #placements.append(gpu)
+            
+        particles_p = asarray(self.particles)
 
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
             # approximate mem usage
             #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
-            #@spawn(placement_TS[i], placement=placements[i], memory=memusage)
-            @spawn(placement_TS[i], placement=placements[i])
+            #@spawn(placement_TS[i], placement=placements[i], memory=memusage) 
+            s = 0
+            @spawn(placement_TS[i], placement=placements[i], input=[particles_p[s:y]])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
-                particles_here = pslice
+                particles_here = particles_p[s:y]
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
                 if placements[i] is not cpu:
                     cuda.synchronize()
-                #copy(pslice, particles_here)
-
+                #copy(pslice, particles_here
+                
         #await placement_TS
         post_placement_TS = TaskSpace("post_placement")
         #with Timer.get_handle("sort"):
         # for some reason using stable here is really expensive, maybe it's not using radix
-        @spawn(post_placement_TS[0], [placement_TS])
+        @spawn(post_placement_TS[0], [placement_TS], input=[particles_p])
         def sort_grid_task():
-            self.particles.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
+            particles_p[:] = particles_p.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
             
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
         @spawn(post_placement_TS[1], [placement_TS])
