@@ -1,4 +1,5 @@
 wheel==0.36.2
+Cython
 setuptools==39.0.1
 numpy==1.20.1
 pkg-resources==0.0.0
@@ -6,3 +7,4 @@ psutil==5.8.0
 scipy==1.6.1
 llvmlite==0.35.0
 numba==0.52.0
+cupy-cuda115==10.1.0

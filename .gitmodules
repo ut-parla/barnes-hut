@@ -1,0 +1,4 @@
+[submodule "Parla.py"]
+	path = Parla.py
+	url = git@github.com:ut-parla/Parla.py.git
+	branch = dev

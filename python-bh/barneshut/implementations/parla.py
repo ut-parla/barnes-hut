@@ -20,6 +20,11 @@ from parla.parray import asarray_batch, asarray
 
 from barneshut.kernels.grid_decomposition.parla import *
 
+def slice_indices(ar, n):
+    k, m = divmod(len(ar), n)
+    inds = [(i*k+min(i, m) , (i+1)*k+min(i+1, m)) for i in range(n)]
+    print(inds)
+
 
 class ParlaBarnesHut (BaseBarnesHut):
 
@@ -93,25 +98,17 @@ class ParlaBarnesHut (BaseBarnesHut):
             placements.append(gpu(i%self.ngpus))
             #placements.append(gpu)
             
-        particles_p = asarray(self.particles)
-
-        self.particles_pa = asarray(self.particles)
-        slices = np.array_split(self.particles, total_tasks)
-
-
+        self.particles_parray = asarray(self.particles)
+        slices = slice_indices(self.particles, total_tasks)
 
         #parray
-        for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
-
-            # approximate mem usage
-            #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
-            #@spawn(placement_TS[i], placement=placements[i], memory=memusage) 
-            s = 0
+        for i, pslice in enumerate(slices):
             #parray input and output are equal, particle slice
-            @spawn(placement_TS[i], placement=placements[i], input=[particles_p[s:y]])
+            start, end = pslice
+            @spawn(placement_TS[i], placement=placements[i], input=[self.particles_parray[start:end]], output=[self.particles_parray[start:end]])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
-                particles_here = particles_p[s:y]
+                particles_here = self.particles_parray[start:end]
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
                 if placements[i] is not cpu:
@@ -122,9 +119,9 @@ class ParlaBarnesHut (BaseBarnesHut):
         post_placement_TS = TaskSpace("post_placement")
         #with Timer.get_handle("sort"):
         # for some reason using stable here is really expensive, maybe it's not using radix
-        @spawn(post_placement_TS[0], [placement_TS], input=[particles_p])
+        @spawn(post_placement_TS[0], [placement_TS], input=[self.particles_parray], output=[self.particles_parray])
         def sort_grid_task():
-            particles_p[:] = particles_p.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
+            self.particles_parray[:] = self.particles_parray.array.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
             
         #parray convert?
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)

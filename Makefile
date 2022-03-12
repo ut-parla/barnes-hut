@@ -1,13 +1,14 @@
-.PHONY: all docker
+.PHONY: all
 
 all:
-	sudo apt install -y python3.7 python3.7-dev python3.7-venv
-	. .bh/bin/activate && pip install wheel && pip install -r requirements.txt
-	rm -rf Parla.py
-	git clone git@github.com:ut-parla/Parla.py.git
-	. .bh/bin/activate && cd Parla.py && python3 setup.py install
+	@echo sudo apt install -y python3.7 python3.7-dev python3.7-venv
+	@echo python3.7 -m venv .parla
+	@echo . .parla/bin/activate 
+	@echo pip install wheel && pip install -r requirements.txt
+	@echo git submodule init
+	@echo pip install -e Parla.py 
 
-	@echo - Here comes the pain..installing numba required llvmlite, which
+	@echo - If numba installation fails.. gere comes the pain..installing numba required llvmlite, which
 	@echo requires llvm, and for some reason everytime I tried installing
 	@echo numba, it complained about llvm-config.
 	@echo First, please check if $llvm-config exists.
@@ -16,14 +17,11 @@ all:
 	@echo then export the path:
 	@echo   export PATH="${PATH}:/usr/lib/llvm-9/bin"
 	@echo then finally install numba
-	@echo   . .bh/bin/activate \&\& pip install numba 
+	@echo   . .parla/bin/activate \&\& pip install numba 
 
-docker:
-	apt install -y python3.7 python3.7-dev python3.7-pip
-	pip install wheel && pip install -r requirements.txt
-	rm -rf Parla.py
-	git clone git@github.com:ut-parla/Parla.py.git
-	cd Parla.py && python3 setup.py install
-	apt install llvm-9
-	export PATH="${PATH}:/usr/lib/llvm-9/bin"
-	pip install numba 
+run:
+	@echo . .parla/bin/activate 
+	@echo cd python-bh
+	@echo export LD_LIBRARY_PATH=/usr/local/cuda/lib64
+	@echo ./bin/run_2d.py input/n10k.txt 1 1 configs/default.ini
+
