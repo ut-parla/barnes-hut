@@ -16,6 +16,7 @@ from parla.cuda import *
 from parla.cpu import *
 from parla.tasks import *
 from parla.function_decorators import *
+from parla.parray import asarray_batch, asarray
 
 from barneshut.kernels.grid_decomposition.parla import *
 
@@ -40,6 +41,11 @@ class ParlaBarnesHut (BaseBarnesHut):
     async def run_bh(self, check_accuracy=False):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
+
+        #parray
+        # need to convert: 
+        #  self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
+
         n_iterations = int(Config.get("general", "rounds"))
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
@@ -75,6 +81,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         total_tasks = cpu_tasks + gpu_tasks        
         logging.debug(f"Launching {cpu_tasks} cpu and {gpu_tasks} gpu tasks to calculate particle placement.")
 
+        #parray
         self.grid_cumm = np.zeros((self.grid_dim, self.grid_dim), dtype=np.int32)
         grid_cumms = np.zeros((total_tasks, self.grid_dim, self.grid_dim), dtype=np.int32)
         placement_TS = TaskSpace("particle_placement")
@@ -88,11 +95,19 @@ class ParlaBarnesHut (BaseBarnesHut):
             
         particles_p = asarray(self.particles)
 
+        self.particles_pa = asarray(self.particles)
+        slices = np.array_split(self.particles, total_tasks)
+
+
+
+        #parray
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+
             # approximate mem usage
             #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
             #@spawn(placement_TS[i], placement=placements[i], memory=memusage) 
             s = 0
+            #parray input and output are equal, particle slice
             @spawn(placement_TS[i], placement=placements[i], input=[particles_p[s:y]])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
@@ -111,7 +126,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         def sort_grid_task():
             particles_p[:] = particles_p.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
             
+        #parray convert?
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
+        
+        #parray TBD: remove this task? seems useless
         @spawn(post_placement_TS[1], [placement_TS])
         def acc_cumm_grid_task():
             # accumulate all cumm grids
@@ -143,6 +161,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             for j in range(self.grid_dim):
                 all_boxes.append((i,j))
 
+        #parray convert these
         self.COMs = np.zeros((self.grid_dim, self.grid_dim, 3), dtype=np.float32)
         tasks_COMs = np.zeros((total_tasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
 
@@ -150,8 +169,8 @@ class ParlaBarnesHut (BaseBarnesHut):
         # because particles are sorted, and all_boxes is also sorted indices
         # we can assume that a subset of boxes here is contiguous
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
-            #memusage = self.particles[start:end].nbytes * 1.4 if placements[i] is not cpu else 0
-            #@spawn(summarize_TS[i], placement=placements[i], memory=memusage)
+            
+            #parray  inputs are many, output is tasks_COMs[i], do we need to specify read-only inputs?
             @spawn(summarize_TS[i], placement=placements[i])
             def summarize_task():
                 fb_x, fb_y = box_range[0]
@@ -197,9 +216,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         G = float(Config.get("bh", "grav_constant"))
         eval_TS = TaskSpace("evaluate")
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
-            #memusage = self.particles[start:end].nbytes * 1.4 if placements[i] is not cpu else 0
-            #@spawn(eval_TS[i], placement=placements[i], memory=memusage)
-            #approximate 140% of particles
+            #parray lots of inputs, output is particle slice, but we pass the entire particles array since some can be read (neighbors)
             @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
                 fb_x, fb_y = box_range[0]
@@ -228,8 +245,7 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         timestep_TS = TaskSpace("timestep")        
         for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
-            #memusage = pslice.nbytes * 1.1 if placements[i] is not cpu else 0
-            #@spawn(timestep_TS[i], placement=placements[i], memory=memusage)
+            #parray input = output == particle slice
             @spawn(timestep_TS[i], placement=placements[i])
             def timestep_task():
                 particles_here = pslice
