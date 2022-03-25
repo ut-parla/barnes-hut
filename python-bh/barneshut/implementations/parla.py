@@ -23,7 +23,7 @@ from barneshut.kernels.grid_decomposition.parla import *
 def slice_indices(ar, n):
     k, m = divmod(len(ar), n)
     inds = [(i*k+min(i, m) , (i+1)*k+min(i+1, m)) for i in range(n)]
-    print(inds)
+    return inds
 
 
 class ParlaBarnesHut (BaseBarnesHut):
@@ -39,7 +39,7 @@ class ParlaBarnesHut (BaseBarnesHut):
     def run(self,  check_accuracy=False, suffix=''):
         self.suffix = suffix
         with Parla():
-            @spawn()
+            @spawn(placement=cpu)
             async def main():
                 await self.run_bh(check_accuracy)
 
@@ -105,12 +105,14 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i, pslice in enumerate(slices):
             #parray input and output are equal, particle slice
             start, end = pslice
-            @spawn(placement_TS[i], placement=placements[i], input=[self.particles_parray[start:end]], output=[self.particles_parray[start:end]])
+            @spawn(placement_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
                 particles_here = self.particles_parray[start:end]
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
+
+                print(f"placement_TS[{i}] finished.", flush=True)
                 if placements[i] is not cpu:
                     cuda.synchronize()
                 #copy(pslice, particles_here

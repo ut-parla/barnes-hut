@@ -46,7 +46,6 @@ def g_place_particles(particles, min_xy, step, grid_dim, grid_box_count):
             cuda.atomic.add(grid_box_count, (x,y), 1)
         else:
             old = cuda.atomic.add(grid_box_count, (x,y), 1)
-            print("grid {}/{} = {}".format(x, y, old))
         # go around
         pidx += tsize
 
