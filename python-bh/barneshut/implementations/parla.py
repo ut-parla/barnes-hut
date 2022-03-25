@@ -61,17 +61,17 @@ class ParlaBarnesHut (BaseBarnesHut):
                     nsquared_sample = self.preround_accuracy_check(sample_indices)
                 with Timer.get_handle("grid_creation"+self.suffix):
                     await self.create_tree()
-                with Timer.get_handle("summarization"+self.suffix):
-                    await self.summarize()
-                for _ in range(self.evaluation_rounds):
-                    with Timer.get_handle("evaluation"+self.suffix):
-                        await self.evaluate()
-                if not self.skip_timestep:
-                    with Timer.get_handle("timestep"+self.suffix):
-                        await self.timestep()
-                if self.checking_accuracy:
-                    self.ensure_particles_id_ordered()
-                    self.check_accuracy(sample_indices, nsquared_sample)
+                # with Timer.get_handle("summarization"+self.suffix):
+                #     await self.summarize()
+                # for _ in range(self.evaluation_rounds):
+                #     with Timer.get_handle("evaluation"+self.suffix):
+                #         await self.evaluate()
+                # if not self.skip_timestep:
+                #     with Timer.get_handle("timestep"+self.suffix):
+                #         await self.timestep()
+                # if self.checking_accuracy:
+                #     self.ensure_particles_id_ordered()
+                #     self.check_accuracy(sample_indices, nsquared_sample)
         #Timer.print()
         self.cleanup()
 
