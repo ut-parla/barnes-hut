@@ -47,9 +47,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
 
-        #parray
-        # need to convert: 
-        #  self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
+        self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
 
         n_iterations = int(Config.get("general", "rounds"))
         self.checking_accuracy = check_accuracy
@@ -62,18 +60,21 @@ class ParlaBarnesHut (BaseBarnesHut):
                 with Timer.get_handle("grid_creation"+self.suffix):
                     await self.create_tree()
                     print("create_tree finished")
-                # with Timer.get_handle("summarization"+self.suffix):
-                #     await self.summarize()
-                # for _ in range(self.evaluation_rounds):
-                #     with Timer.get_handle("evaluation"+self.suffix):
-                #         await self.evaluate()
-                # if not self.skip_timestep:
-                #     with Timer.get_handle("timestep"+self.suffix):
-                #         await self.timestep()
+                with Timer.get_handle("summarization"+self.suffix):
+                    await self.summarize()
+                print("done")
+                #for _ in range(self.evaluation_rounds):
+                with Timer.get_handle("evaluation"+self.suffix):
+                    print("eval")
+                    await self.evaluate()
+                if not self.skip_timestep:
+                    with Timer.get_handle("timestep"+self.suffix):
+                        await self.timestep()
                 # if self.checking_accuracy:
                 #     self.ensure_particles_id_ordered()
                 #     self.check_accuracy(sample_indices, nsquared_sample)
-        #Timer.print()
+        Timer.print()
+        print("done")
         self.cleanup()
 
     async def create_tree(self):
@@ -169,27 +170,35 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.COMs = np.zeros((self.grid_dim, self.grid_dim, 3), dtype=np.float32)
         tasks_COMs = np.zeros((total_tasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
 
+        print(f"before coms {self.COMs}")
+
         summarize_TS = TaskSpace("summarize")
         # because particles are sorted, and all_boxes is also sorted indices
         # we can assume that a subset of boxes here is contiguous
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
-            
+            fb_x, fb_y = box_range[0]
+            lb_x, lb_y = box_range[-1]
+            start = self.grid_ranges[fb_x, fb_y, 0]
+            end = self.grid_ranges[lb_x, lb_y, 1]  
+
             #parray  inputs are many, output is tasks_COMs[i], do we need to specify read-only inputs?
-            @spawn(summarize_TS[i], placement=placements[i])
+            @spawn(summarize_TS[i], placement=placements[i], input=[self.particles_parray[start:end]])
             def summarize_task():
-                fb_x, fb_y = box_range[0]
-                lb_x, lb_y = box_range[-1]
-                start = self.grid_ranges[fb_x, fb_y, 0]
-                end = self.grid_ranges[lb_x, lb_y, 1]   
+                # fb_x, fb_y = box_range[0]
+                # lb_x, lb_y = box_range[-1]
+                # start = self.grid_ranges[fb_x, fb_y, 0]
+                # end = self.grid_ranges[lb_x, lb_y, 1]   
                 particle_slice = self.particles[start:end]
                 p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
-                if placements[i] is not cpu:
-                    cuda.synchronize()
+                #if placements[i] is not cpu:
+                #    cuda.synchronize()
                 print(f"summarize_TS[{i}] finished.", flush=True)
         await summarize_TS
         # accumulate COMs
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
+
+        print(f"after coms {self.COMs}")
 
     async def evaluate(self):
         #with Timer.get_handle("t0"):
@@ -222,18 +231,21 @@ class ParlaBarnesHut (BaseBarnesHut):
         eval_TS = TaskSpace("evaluate")
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
             #parray lots of inputs, output is particle slice, but we pass the entire particles array since some can be read (neighbors)
-            @spawn(eval_TS[i], placement=placements[i])
+            fb_x, fb_y = box_range[0]
+            lb_x, lb_y = box_range[-1]
+            start = self.grid_ranges[fb_x, fb_y, 0]
+            end = self.grid_ranges[lb_x, lb_y, 1]
+
+            @spawn(eval_TS[i], placement=placements[i], input=[self.particles], output=[self.particles[start:end]])
             def evaluate_task():
-                fb_x, fb_y = box_range[0]
-                lb_x, lb_y = box_range[-1]
-                start = self.grid_ranges[fb_x, fb_y, 0]
-                end = self.grid_ranges[lb_x, lb_y, 1]
                 print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
-                if placements[i] is not cpu:
-                    copy(self.particles[start:end], mod_particles)
+                #if placements[i] is not cpu:
+                #    copy(self.particles[start:end], mod_particles)
                 print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
+
+        print(f"eval done   {self.particles_parray.array[:5]}")
 
     async def timestep(self):
         cpu_tasks = int(Config.get("parla", "timestep_cpu_tasks"))
@@ -249,12 +261,14 @@ class ParlaBarnesHut (BaseBarnesHut):
             placements.append(gpu(i%self.ngpus))
             #placements.append(gpu)
 
+        slices = slice_indices(self.particles, total_tasks)
         timestep_TS = TaskSpace("timestep")        
-        for i, pslice in enumerate(np.array_split(self.particles, total_tasks)):
+        for i, pslice in enumerate(slices):
             #parray input = output == particle slice
-            @spawn(timestep_TS[i], placement=placements[i])
+            start, end = pslice
+            @spawn(timestep_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]])
             def timestep_task():
-                particles_here = pslice
+                particles_here = self.particles_parray[start:end]
                 p_timestep(particles_here, tick)
 
         await timestep_TS

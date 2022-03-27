@@ -12,9 +12,11 @@ class TimerHandle:
     def stop(self):
         elapsed = timer() - self.t0
         self.parent._report_time(self.name, elapsed)
+        print(f"stopping {self.name}  {elapsed}")
 
     #context methods taken from https://gist.github.com/sumeet/1123871
     def __enter__(self):
+        print(f"starting {self.name}")
         self.start() 
         return self
 
