@@ -114,35 +114,38 @@ class ParlaBarnesHut (BaseBarnesHut):
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
 
                 print(f"placement_TS[{i}] finished.", flush=True)
-                if placements[i] is not cpu:
-                    cuda.synchronize()
+
+                cuda.synchronize()
+                print(f"sample parts{i} {particles_here[:5]}")
+                #if placements[i] is not cpu:
+                #    cuda.synchronize()
                 #copy(pslice, particles_here
                 
-        #await placement_TS
-        post_placement_TS = TaskSpace("post_placement")
-        #with Timer.get_handle("sort"):
-        # for some reason using stable here is really expensive, maybe it's not using radix
-        @spawn(post_placement_TS[0], [placement_TS], placement=cpu, inout=[self.particles_parray])
-        def sort_grid_task():
-            self.particles_parray[:] = self.particles_parray.array.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
-            print(f"post_placement_TS[0] finished.", flush=True)
+        await placement_TS
+
+        print(f"before sort : {self.particles_parray.array[:5]}")
+        #self.particles_parray[:] = self.particles_parray.array.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
+        x = self.particles_parray.array.copy()
+        x.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
+        self.particles_parray[:] = x
+        print(f"after sort: {x[:5]}")
+        print(f"post_placement_TS[0] finished.", flush=True)
+        print(f"after sort: {self.particles_parray.array[:5]}")
         #parray convert?
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
         
-        #parray TBD: remove this task? seems useless
-        @spawn(post_placement_TS[1], [placement_TS])
-        def acc_cumm_grid_task():
-            # accumulate all cumm grids
-            for i in range(total_tasks):
-                self.grid_cumm += grid_cumms[i]
-            acc = 0
-            for i in range(self.grid_dim):
-                for j in range(self.grid_dim):
-                    self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
-                    acc += self.grid_cumm[i,j]
-            print(f"post_placement_TS[1] finished.", flush=True)
+        for i in range(total_tasks):
+            self.grid_cumm += grid_cumms[i]
+        acc = 0
+        for i in range(self.grid_dim):
+            for j in range(self.grid_dim):
+                self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
+                acc += self.grid_cumm[i,j]
+        print(f"post_placement_TS[1] finished.", flush=True)
 
-        await post_placement_TS
+        print(f"parts: {self.particles_parray.array[:5]}")
+
+        #await post_placement_TS
 
     async def summarize(self):
         cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
