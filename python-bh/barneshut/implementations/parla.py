@@ -61,6 +61,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                     nsquared_sample = self.preround_accuracy_check(sample_indices)
                 with Timer.get_handle("grid_creation"+self.suffix):
                     await self.create_tree()
+                    print("create_tree finished")
                 # with Timer.get_handle("summarization"+self.suffix):
                 #     await self.summarize()
                 # for _ in range(self.evaluation_rounds):
@@ -108,7 +109,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             @spawn(placement_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]])
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
-                particles_here = self.particles_parray[start:end]
+                particles_here = self.particles_parray[start:end].array
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
 
@@ -121,10 +122,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         post_placement_TS = TaskSpace("post_placement")
         #with Timer.get_handle("sort"):
         # for some reason using stable here is really expensive, maybe it's not using radix
-        @spawn(post_placement_TS[0], [placement_TS], input=[self.particles_parray], output=[self.particles_parray])
+        @spawn(post_placement_TS[0], [placement_TS], placement=cpu, inout=[self.particles_parray])
         def sort_grid_task():
             self.particles_parray[:] = self.particles_parray.array.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
-            
+            print(f"post_placement_TS[0] finished.", flush=True)
         #parray convert?
         self.grid_ranges = np.zeros((self.grid_dim, self.grid_dim, 2), dtype=np.int32)
         
@@ -139,6 +140,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 for j in range(self.grid_dim):
                     self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
                     acc += self.grid_cumm[i,j]
+            print(f"post_placement_TS[1] finished.", flush=True)
 
         await post_placement_TS
 
@@ -180,6 +182,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
                 if placements[i] is not cpu:
                     cuda.synchronize()
+                print(f"summarize_TS[{i}] finished.", flush=True)
         await summarize_TS
         # accumulate COMs
         for i in range(total_tasks):
@@ -226,6 +229,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
                 if placements[i] is not cpu:
                     copy(self.particles[start:end], mod_particles)
+                print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
 
     async def timestep(self):
