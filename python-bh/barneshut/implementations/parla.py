@@ -34,7 +34,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         super().__init__()
         self.grid = None
         self.grid_cumm = None
-        self.ngpus = int(Config.get("parla", "gpus_available"))
+        self.ngpus = gpu.num_devices
 
     def run(self,  check_accuracy=False, suffix=''):
         self.suffix = suffix
