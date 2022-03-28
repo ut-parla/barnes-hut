@@ -237,7 +237,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             start = self.grid_ranges[fb_x, fb_y, 0]
             end = self.grid_ranges[lb_x, lb_y, 1]
 
-            @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[*all_slices])
+            @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]])
             def evaluate_task():
                 print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
