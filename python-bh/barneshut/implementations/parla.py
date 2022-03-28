@@ -47,8 +47,6 @@ class ParlaBarnesHut (BaseBarnesHut):
         """This sucks.. because everything is async in Parla and needs to be awaited,
         we need to copy/paste this method from base.py"""
 
-        self.particles = np.empty((self.n_particles,p.nfields), dtype=np.float64)
-
         n_iterations = int(Config.get("general", "rounds"))
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
@@ -62,19 +60,16 @@ class ParlaBarnesHut (BaseBarnesHut):
                     print("create_tree finished")
                 with Timer.get_handle("summarization"+self.suffix):
                     await self.summarize()
-                print("done")
-                #for _ in range(self.evaluation_rounds):
-                with Timer.get_handle("evaluation"+self.suffix):
-                    print("eval")
-                    await self.evaluate()
+                for _ in range(self.evaluation_rounds):
+                    with Timer.get_handle("evaluation"+self.suffix):
+                        await self.evaluate()
                 if not self.skip_timestep:
                     with Timer.get_handle("timestep"+self.suffix):
                         await self.timestep()
-                # if self.checking_accuracy:
-                #     self.ensure_particles_id_ordered()
-                #     self.check_accuracy(sample_indices, nsquared_sample)
-        Timer.print()
-        print("done")
+                if self.checking_accuracy:
+                    self.ensure_particles_id_ordered()
+                    self.check_accuracy(sample_indices, nsquared_sample)
+        #Timer.print()
         self.cleanup()
 
     async def create_tree(self):
@@ -227,6 +222,12 @@ class ParlaBarnesHut (BaseBarnesHut):
                 start, end = self.grid_ranges[x, y]
                 grid[(x,y)] = Cloud.from_slice(self.particles[start:end])
 
+        slices = slice_indices(self.particles, total_tasks)
+        all_slices = []
+        for i, pslice in enumerate(slices):
+            start, end = pslice
+            all_slices.append(self.particles_parray[start:end])
+
         G = float(Config.get("bh", "grav_constant"))
         eval_TS = TaskSpace("evaluate")
         for i, box_range in enumerate(np.array_split(all_boxes, total_tasks)):
@@ -236,7 +237,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             start = self.grid_ranges[fb_x, fb_y, 0]
             end = self.grid_ranges[lb_x, lb_y, 1]
 
-            @spawn(eval_TS[i], placement=placements[i], input=[self.particles], output=[self.particles[start:end]])
+            @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[*all_slices])
             def evaluate_task():
                 print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
