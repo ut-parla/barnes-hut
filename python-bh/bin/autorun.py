@@ -19,7 +19,6 @@ cfgs = {
     "parla2_eager_sched": "parla2_eager_sched.ini",
     "parla4_eager_sched": "parla4_eager_sched.ini",
 }
-}
 
 template_cmd = "./bin/run_2d.py input/nbody-10M.txt 1 1 configs/{ini}"
 
