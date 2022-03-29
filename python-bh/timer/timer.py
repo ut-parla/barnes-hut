@@ -37,14 +37,18 @@ class TimerClass:
             self.times[name] = []
         self.times[name].append(elapsed)
 
-    def print(self):
+    def print(self, nwarm=0):
         #print("Time report\n")
         print("*"*50)
-        print("name, avg, stddev")
+        #print(f"{'name':<15}, {'avg':<7}, {'stddev':<7}")
+        print(f"{'name':<15}, {'median':<7}")
         for name, times in self.times.items():
-            avg    = statistics.mean(times)
-            stddev = statistics.pstdev(times)
-            print(f"{name}, {avg}, {stddev}")
+            times = times[nwarm:]
+            #avg    = statistics.mean(times)
+            #stddev = statistics.pstdev(times)
+            #print(f"{name:<15}, {avg:.5f}, {stddev:.5f}")
+            median = statistics.median(times)
+            print(f"{name:<15}, {median:.5f}")
         print("*"*50)
 
     def reset(self):

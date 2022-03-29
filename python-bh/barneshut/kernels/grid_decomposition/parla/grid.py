@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 from math import ceil
 from numba import cuda, float64, njit
 from itertools import product
@@ -109,7 +110,7 @@ def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_di
 
 #@p_evaluate.variant(gpu)
 #def p_evaluate_gpu(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
-def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
+def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
     threads_per_block = int(Config.get("cuda", "threads_per_block"))
     cn = set()
     for box_xy in my_boxes:
@@ -121,18 +122,35 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
     # now we need to copy those boxes
     n_close_neighbors = len(cn)
     total = 0
-    cn_particles = np.empty((1, 3), dtype=np.float64)
+    cn_particles = cp.empty((1, 3), dtype=np.float64)
     cn_ranges = np.zeros((grid_dim, grid_dim, 2), dtype=np.int32)
     if n_close_neighbors > 0:
         for x, y in cn:
             l = grid_ranges[x, y, 1] - grid_ranges[x, y, 0]
             cn_ranges[x, y] = total, total+l
             total += l                 
-        cn_particles = np.empty((total, 3), dtype=np.float64)
+        cn_particles = cp.empty((total, 3), dtype=np.float64)
         for x, y in cn:
             start, end = cn_ranges[x, y]
             ostart, oend = grid_ranges[x, y]
-            cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1].array
+
+            if not is_parray:
+                cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1].array
+            else:
+                crosses_border = False
+                for i in range(len(slices)-1):
+                    if ostart < slices[i][1] and oend > slices[i+1][0]:
+                        crosses_border = True
+                        sl1 = slices[i]
+                        sl2 = slices[i+1]
+                if not crosses_border:
+                    cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1].array
+                else:
+                    ncopy1 = sl1[1]-ostart
+                    cn_particles[start:start+ncopy1] = particles[ostart:ostart+ncopy1, p.px:p.mass+1].array
+                    ncopy2 = oend-ostart-ncopy1
+                    cn_particles[start+ncopy1:start+ncopy1+ncopy2] = particles[ostart+ncopy1:ostart+ncopy1+ncopy2, p.px:p.mass+1].array
+
 
     fb_x, fb_y = my_boxes[0]
     lb_x, lb_y = my_boxes[-1]

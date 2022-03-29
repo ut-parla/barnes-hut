@@ -49,9 +49,9 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         n_iterations = int(Config.get("general", "rounds"))
 
-        is_eager = Config.get("parla", "use_eager") == True if "True" else False #lol
+        self.is_eager = Config.get("parla", "use_eager") == True if "True" else False #lol
         x = Config.get("parla", "use_eager")
-        print(f"Using eager? {x} {is_eager}")
+        print(f"Using eager? {x} {self.is_eager}")
 
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
@@ -61,26 +61,26 @@ class ParlaBarnesHut (BaseBarnesHut):
                 if self.checking_accuracy:
                     nsquared_sample = self.preround_accuracy_check(sample_indices)
                 with Timer.get_handle("grid_creation"+self.suffix):
-                    if is_eager:
+                    if self.is_eager:
                         await self.create_tree_eager()
                     else:
                         await self.create_tree()
                     print("create_tree finished")
                 with Timer.get_handle("summarization"+self.suffix):
-                    if is_eager:
+                    if self.is_eager:
                         await self.summarize_eager()
                     else:
                         await self.summarize()
                 for _ in range(self.evaluation_rounds):
                     with Timer.get_handle("evaluation"+self.suffix):
-                        if is_eager:
+                        if self.is_eager:
                             await self.evaluate_eager()
                         else:
                             await self.evaluate()
                 if not self.skip_timestep:
                     with Timer.get_handle("timestep"+self.suffix):
                         await self.timestep()
-                        if is_eager:
+                        if self.is_eager:
                             await self.timestep_eager()
                         else:
                             await self.timestep()
@@ -116,6 +116,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         
         self.particles_parray = asarray(self.particles)
         slices = slice_indices(self.particles, total_tasks)
+        print(slices)
 
         #parray
         for i, pslice in enumerate(slices):
@@ -243,7 +244,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]])
             def evaluate_task():
                 print(f"boxes of task {i}: {len(box_range)}")
-                mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
                 print(f"eval_TS[{i}] finished.", flush=True)
@@ -441,7 +442,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
                 print(f"boxes of task {i}: {len(box_range)}")
-                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim)
+                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
                 print(f"eval_TS[{i}] finished.", flush=True)
