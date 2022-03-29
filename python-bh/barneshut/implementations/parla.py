@@ -79,7 +79,6 @@ class ParlaBarnesHut (BaseBarnesHut):
                             await self.evaluate()
                 if not self.skip_timestep:
                     with Timer.get_handle("timestep"+self.suffix):
-                        await self.timestep()
                         if self.is_eager:
                             await self.timestep_eager()
                         else:
