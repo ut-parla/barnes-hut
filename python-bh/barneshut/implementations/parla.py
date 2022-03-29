@@ -113,7 +113,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i in range(gpu_tasks):
             placements.append(gpu(i%self.ngpus))
             #placements.append(gpu)
-            
+        
         self.particles_parray = asarray(self.particles)
         slices = slice_indices(self.particles, total_tasks)
 
@@ -127,18 +127,14 @@ class ParlaBarnesHut (BaseBarnesHut):
                 particles_here = self.particles_parray[start:end].array
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
-
-                print(f"placement_TS[{i}] finished.", flush=True)
-
                 cuda.synchronize()
-                print(f"sample parts{i} {particles_here[:5]}")
+
                 #if placements[i] is not cpu:
                 #    cuda.synchronize()
                 #copy(pslice, particles_here
                 
         await placement_TS
 
-        
         #self.particles_parray[:] = self.particles_parray.array.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
         x = self.particles_parray.array.copy()
         x.view(p.fieldsstr).sort(order=[p.gxf, p.gyf])  #, axis=0, kind="stable")
@@ -153,7 +149,6 @@ class ParlaBarnesHut (BaseBarnesHut):
                 self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
                 acc += self.grid_cumm[i,j]
         print(f"post_placement_TS[1] finished.", flush=True)
-
 
     async def summarize(self):
         cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
@@ -177,8 +172,6 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.COMs = np.zeros((self.grid_dim, self.grid_dim, 3), dtype=np.float32)
         tasks_COMs = np.zeros((total_tasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
 
-        print(f"before coms {self.COMs}")
-
         summarize_TS = TaskSpace("summarize")
         # because particles are sorted, and all_boxes is also sorted indices
         # we can assume that a subset of boxes here is contiguous
@@ -199,13 +192,11 @@ class ParlaBarnesHut (BaseBarnesHut):
                 p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
                 #if placements[i] is not cpu:
                 #    cuda.synchronize()
-                print(f"summarize_TS[{i}] finished.", flush=True)
+                #print(f"summarize_TS[{i}] finished.", flush=True)
         await summarize_TS
         # accumulate COMs
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
-
-        print(f"after coms {self.COMs}")
 
     async def evaluate(self):
         #with Timer.get_handle("t0"):
@@ -258,7 +249,6 @@ class ParlaBarnesHut (BaseBarnesHut):
                 print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
 
-        print(f"eval done   {self.particles_parray.array[:5]}")
 
     async def timestep(self):
         cpu_tasks = int(Config.get("parla", "timestep_cpu_tasks"))

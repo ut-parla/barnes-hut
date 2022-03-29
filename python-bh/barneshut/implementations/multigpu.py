@@ -42,6 +42,7 @@ class MultiGPUBarnesHut (BaseBarnesHut):
         def launch(self):
             """Launch ourselves as thread"""
             self.thread = threading.Thread(target=self.run)
+            self.thread.daemon = True
             self.thread.start()
 
         def run(self):
@@ -239,6 +240,9 @@ class MultiGPUBarnesHut (BaseBarnesHut):
             cell.min_xy = self.min_xy
             cell.step = self.step
 
+    def __clean_gpu_cells(self):
+        gpu_cells_initd = False
+
     def call_method_all_cells(self, fn_name, *args):
         #send message to all threads
         for cell in self.gpu_cells.values():
@@ -332,5 +336,6 @@ class MultiGPUBarnesHut (BaseBarnesHut):
 
         #self.gpu_cells_initd = False
         #self.gpu_cells = {}
+        self.__clean_gpu_cells()
         self.grid = None
         logging.debug("done!")

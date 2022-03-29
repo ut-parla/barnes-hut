@@ -11,7 +11,7 @@ cfgs = {
     "parla4": "parla4.ini",
 }
 
-template_cmd = "./bin/run_2d.py input/n10M.txt 1 1 configs/{ini}"
+template_cmd = "./bin/run_2d.py input/n10k.txt 1 1 configs/{ini}"
 
 for name, cfg in cfgs.items():
     cmd = template_cmd.format(ini=cfg)

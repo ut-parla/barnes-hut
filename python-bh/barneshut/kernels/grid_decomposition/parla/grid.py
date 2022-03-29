@@ -132,14 +132,14 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
         for x, y in cn:
             start, end = cn_ranges[x, y]
             ostart, oend = grid_ranges[x, y]
-            cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1]
+            cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1].array
 
     fb_x, fb_y = my_boxes[0]
     lb_x, lb_y = my_boxes[-1]
     offset = grid_ranges[fb_x, fb_y, 0]
     start = grid_ranges[fb_x, fb_y, 0]
     end = grid_ranges[lb_x, lb_y, 1]
-    my_particles = particles[start:end]
+    my_particles = particles[start:end].array
 
     pblocks = ceil((end-start)/threads_per_block)    
     gblocks = min(len(my_boxes), MAX_X_BLOCKS)
