@@ -53,6 +53,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         x = Config.get("parla", "use_eager")
         print(f"Using eager? >{x}< {self.is_eager}")
 
+        self.use_sched = "True" in Config.get("parla", "use_sched")
+        x = Config.get("parla", "use_sched")
+        print(f"Using sched? >{x}< {self.use_sched}")
+
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
             sample_indices = self.generate_sample_indices()
@@ -110,8 +114,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
         
         self.particles_parray = asarray(self.particles)
         slices = slice_indices(self.particles, total_tasks)
@@ -160,8 +166,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -209,8 +217,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -261,8 +271,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         slices = slice_indices(self.particles, total_tasks)
         timestep_TS = TaskSpace("timestep")        
@@ -310,8 +322,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
             
         #self.particles_parray = asarray(self.particles)
         slices = slice_indices(self.particles, total_tasks)
@@ -362,8 +376,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -411,8 +427,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         all_boxes = []
         for i in range(self.grid_dim):
@@ -458,8 +476,10 @@ class ParlaBarnesHut (BaseBarnesHut):
         for _ in range(cpu_tasks):
             placements.append(cpu)
         for i in range(gpu_tasks):
-            placements.append(gpu(i%self.ngpus))
-            #placements.append(gpu)
+            if self.use_sched:
+                placements.append(gpu)
+            else:
+                placements.append(gpu(i%self.ngpus))
 
         slices = slice_indices(self.particles, total_tasks)
         timestep_TS = TaskSpace("timestep")        
