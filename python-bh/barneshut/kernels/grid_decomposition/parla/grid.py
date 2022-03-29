@@ -169,6 +169,50 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slice
     cuda.synchronize()
     return my_particles
 
+
+def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
+    threads_per_block = int(Config.get("cuda", "threads_per_block"))
+    cn = set()
+    for box_xy in my_boxes:
+        cn |= set(get_neighbor_cells(tuple(box_xy), grid_dim))
+    tp_boxes = [(x,y) for x,y in my_boxes]
+    cn -= set(tp_boxes)
+    #print(f"Close neighbors of {tp_boxes} : {cn}")
+
+    # now we need to copy those boxes
+    n_close_neighbors = len(cn)
+    total = 0
+    cn_particles = np.empty((1, 3), dtype=np.float64)
+    cn_ranges = np.zeros((grid_dim, grid_dim, 2), dtype=np.int32)
+    if n_close_neighbors > 0:
+        for x, y in cn:
+            l = grid_ranges[x, y, 1] - grid_ranges[x, y, 0]
+            cn_ranges[x, y] = total, total+l
+            total += l                 
+        cn_particles = np.empty((total, 3), dtype=np.float64)
+        for x, y in cn:
+            start, end = cn_ranges[x, y]
+            ostart, oend = grid_ranges[x, y]
+            cn_particles[start:end] = particles[ostart:oend, p.px:p.mass+1].array
+
+    fb_x, fb_y = my_boxes[0]
+    lb_x, lb_y = my_boxes[-1]
+    offset = grid_ranges[fb_x, fb_y, 0]
+    start = grid_ranges[fb_x, fb_y, 0]
+    end = grid_ranges[lb_x, lb_y, 1]
+    my_particles = particles[start:end].array
+
+    pblocks = ceil((end-start)/threads_per_block)    
+    gblocks = min(len(my_boxes), MAX_X_BLOCKS)
+    blocks = (pblocks, gblocks)
+    threads = threads_per_block
+    g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
+                COMs, cn_ranges, cn_particles, G)
+
+    cuda.synchronize()
+    return my_particles
+
+
 @specialized
 @njit(fastmath=True)
 def p_timestep(particles, tick):
