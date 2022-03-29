@@ -1,0 +1,35 @@
+Using multigpu implementation
+Skiping timestep? False
+starting end-to-end
+starting grid_creation
+stopping grid_creation  18.312088459264487
+starting summarization
+stopping summarization  0.4106776653788984
+starting evaluation
+Running evaluate kernel with 7200 boxes, blocks: (39053, 7200)   threads 128
+Running evaluate kernel with 7200 boxes, blocks: (39073, 7200)   threads 128
+stopping evaluation  79.70069877104834
+starting timestep
+stopping timestep  0.24992131488397717
+stopping end-to-end  98.67366344109178
+warmup done
+starting end-to-end
+starting grid_creation
+stopping grid_creation  1.719502449966967
+starting summarization
+stopping summarization  0.008774585090577602
+starting evaluation
+Running evaluate kernel with 7200 boxes, blocks: (39053, 7200)   threads 128
+Running evaluate kernel with 7200 boxes, blocks: (39073, 7200)   threads 128
+stopping evaluation  78.94411747995764
+starting timestep
+stopping timestep  0.002533016260713339
+stopping end-to-end  80.67511490406469
+**************************************************
+name           , median 
+grid_creation  , 1.71950
+summarization  , 0.00877
+evaluation     , 78.94412
+timestep       , 0.00253
+end-to-end     , 80.67511
+**************************************************

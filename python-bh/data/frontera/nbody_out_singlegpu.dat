@@ -1,0 +1,36 @@
+Using singlegpu implementation
+Skiping timestep? False
+starting end-to-end
+starting grid_creation
+Allocating 762.939453125 MB on device
+Running placement kernel with blocks: 65535   threads 128
+stopping grid_creation  1.6546380179934204
+starting summarization
+stopping summarization  0.21678811684250832
+starting evaluation
+Running evaluate kernel with grid size 14400  with blocks: (65535, 14400)   threads 128
+stopping evaluation  165.57422508113086
+starting timestep
+stopping timestep  0.16216742200776935
+stopping end-to-end  167.60863472986966
+warmup done
+starting end-to-end
+starting grid_creation
+Running placement kernel with blocks: 65535   threads 128
+stopping grid_creation  0.7802336001768708
+starting summarization
+stopping summarization  0.005090632941573858
+starting evaluation
+Running evaluate kernel with grid size 14400  with blocks: (65535, 14400)   threads 128
+stopping evaluation  166.04621486598626
+starting timestep
+stopping timestep  0.005381273105740547
+stopping end-to-end  166.83712560217828
+**************************************************
+name           , median 
+grid_creation  , 0.78023
+summarization  , 0.00509
+evaluation     , 166.04621
+timestep       , 0.00538
+end-to-end     , 166.83713
+**************************************************

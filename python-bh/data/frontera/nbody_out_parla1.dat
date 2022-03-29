@@ -1,0 +1,43 @@
+Using parla implementation
+Skiping timestep? False
+Using eager? >False< False
+starting end-to-end
+starting grid_creation
+[(0, 10000000)]
+post_placement_TS[1] finished.
+create_tree finished
+stopping grid_creation  2.295410963241011
+starting summarization
+stopping summarization  0.2950449110940099
+starting evaluation
+boxes of task 0: 14400
+eval_TS[0] finished.
+stopping evaluation  160.8674830677919
+starting timestep
+stopping timestep  0.14316887129098177
+stopping end-to-end  163.6012730379589
+warmup done
+Using eager? >False< False
+starting end-to-end
+starting grid_creation
+[(0, 10000000)]
+post_placement_TS[1] finished.
+create_tree finished
+stopping grid_creation  1.2327721337787807
+starting summarization
+stopping summarization  0.02226430829614401
+starting evaluation
+boxes of task 0: 14400
+eval_TS[0] finished.
+stopping evaluation  160.08410529606044
+starting timestep
+stopping timestep  0.008324013091623783
+stopping end-to-end  161.34759906167164
+**************************************************
+name           , median 
+grid_creation  , 1.23277
+summarization  , 0.02226
+evaluation     , 160.08411
+timestep       , 0.00832
+end-to-end     , 161.34760
+**************************************************
