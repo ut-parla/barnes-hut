@@ -121,7 +121,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         
         self.particles_parray = asarray(self.particles)
         slices = slice_indices(self.particles, total_tasks)
-        print(slices)
+        #print(slices)
 
         #parray
         for i, pslice in enumerate(slices):
@@ -252,11 +252,11 @@ class ParlaBarnesHut (BaseBarnesHut):
 
             @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]])
             def evaluate_task():
-                print(f"boxes of task {i}: {len(box_range)}")
+                #print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
-                print(f"eval_TS[{i}] finished.", flush=True)
+                #print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
 
 
@@ -341,10 +341,10 @@ class ParlaBarnesHut (BaseBarnesHut):
                 cumm = grid_cumms[i]
                 p_place_particles(particles_here, cumm, self.min_xy, self.grid_dim, self.step)
 
-                print(f"placement_TS[{i}] finished.", flush=True)
+                #print(f"placement_TS[{i}] finished.", flush=True)
 
                 cuda.synchronize()
-                print(f"sample parts{i} {particles_here[:5]}")
+                #print(f"sample parts{i} {particles_here[:5]}")
                 #if placements[i] is not cpu:
                 #    cuda.synchronize()
                 #copy(pslice, particles_here
@@ -361,7 +361,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             for j in range(self.grid_dim):
                 self.grid_ranges[i,j] = acc, acc+self.grid_cumm[i,j]
                 acc += self.grid_cumm[i,j]
-        print(f"post_placement_TS[1] finished.", flush=True)
+        #print(f"post_placement_TS[1] finished.", flush=True)
 
 
         #await post_placement_TS
@@ -390,7 +390,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         self.COMs = np.zeros((self.grid_dim, self.grid_dim, 3), dtype=np.float32)
         tasks_COMs = np.zeros((total_tasks, self.grid_dim, self.grid_dim, 3), dtype=np.float32)
 
-        print(f"before coms {self.COMs}")
+        #print(f"before coms {self.COMs}")
 
         summarize_TS = TaskSpace("summarize")
         # because particles are sorted, and all_boxes is also sorted indices
@@ -408,13 +408,13 @@ class ParlaBarnesHut (BaseBarnesHut):
                 p_summarize_boxes(particle_slice, box_range, start, self.grid_ranges, self.grid_dim, tasks_COMs[i])
                 #if placements[i] is not cpu:
                 #    cuda.synchronize()
-                print(f"summarize_TS[{i}] finished.", flush=True)
+                #print(f"summarize_TS[{i}] finished.", flush=True)
         await summarize_TS
         # accumulate COMs
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
 
-        print(f"after coms {self.COMs}")
+        #print(f"after coms {self.COMs}")
 
     async def evaluate_eager(self):
         #with Timer.get_handle("t0"):
@@ -458,11 +458,11 @@ class ParlaBarnesHut (BaseBarnesHut):
 
             @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
-                print(f"boxes of task {i}: {len(box_range)}")
+                #print(f"boxes of task {i}: {len(box_range)}")
                 mod_particles = p_evaluate_eager(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
-                print(f"eval_TS[{i}] finished.", flush=True)
+                #print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
 
     async def timestep_eager(self):
