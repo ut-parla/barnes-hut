@@ -49,9 +49,9 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         n_iterations = int(Config.get("general", "rounds"))
 
-        self.is_eager = Config.get("parla", "use_eager") == True if "True" else False #lol
+        self.is_eager = "True" in Config.get("parla", "use_eager")
         x = Config.get("parla", "use_eager")
-        print(f"Using eager? {x} {self.is_eager}")
+        print(f"Using eager? >{x}< {self.is_eager}")
 
         self.checking_accuracy = check_accuracy
         if self.checking_accuracy:
