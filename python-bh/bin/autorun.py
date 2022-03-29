@@ -4,12 +4,16 @@ from time import sleep
 
 
 cfgs = {
-    "singlegpu": "singlegpu.ini",
-    "2gpus": "2gpus.ini",
-    "4gpus": "4gpus.ini",
-    "parla1": "parla1.ini",
-    "parla2": "parla2.ini",
-    "parla4": "parla4.ini",
+    # "singlegpu": "singlegpu.ini",
+    # "2gpus": "2gpus.ini",
+    # "4gpus": "4gpus.ini",
+    # "parla1": "parla1.ini",
+    # "parla2": "parla2.ini",
+    # "parla4": "parla4.ini",
+
+    "parla1_eager": "parla1_eager.ini",
+    "parla2_eager": "parla2_eager.ini",
+    "parla4_eager": "parla4_eager.ini",
 }
 
 template_cmd = "./bin/run_2d.py input/nbody-10M.txt 1 1 configs/{ini}"
