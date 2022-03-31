@@ -26,9 +26,9 @@ for name, cfg in cfgs.items():
     cmd = template_cmd.format(ini=cfg)
     fname = f"nbody_out_{name}"
 
-    if name == "parla1":
+    if "parla1" in name:
         cmd = "CUDA_VISIBLE_DEVICES=0 " + cmd
-    if name == "parla2":
+    if "parla2" in name:
         cmd = "CUDA_VISIBLE_DEVICES=0,1 " + cmd
 
     print("running  ", cmd)
