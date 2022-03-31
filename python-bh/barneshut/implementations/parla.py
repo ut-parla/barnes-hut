@@ -255,7 +255,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]], memory=tengigs)
             def evaluate_task():
                 #print(f"boxes of task {i}: {len(box_range)}")
-                mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, self.is_eager)
+                mod_particles = p_evaluate_eager(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
                 #print(f"eval_TS[{i}] finished.", flush=True)
@@ -461,7 +461,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             @spawn(eval_TS[i], placement=placements[i])
             def evaluate_task():
                 #print(f"boxes of task {i}: {len(box_range)}")
-                mod_particles = p_evaluate_eager(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
+                mod_particles = p_evaluate(self.particles, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
                 #print(f"eval_TS[{i}] finished.", flush=True)

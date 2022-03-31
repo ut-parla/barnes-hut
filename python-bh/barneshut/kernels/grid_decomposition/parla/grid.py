@@ -15,6 +15,32 @@ from timer import Timer
 from barneshut.kernels.helpers import get_neighbor_cells, remove_bottom_left_neighbors
 from barneshut.kernels.grid_decomposition.gpu.grid import *
 
+def stream_cupy_to_numba(cp_stream):
+    '''
+    Notes:
+        1. The lifetime of the returned Numba stream should be as long as the CuPy one,
+           which handles the deallocation of the underlying CUDA stream.
+        2. The returned Numba stream is assumed to live in the same CUDA context as the
+           CuPy one.
+        3. The implementation here closely follows that of cuda.stream() in Numba.
+    '''
+    from ctypes import c_void_p
+    import weakref
+
+    # get the pointer to actual CUDA stream
+    raw_str = cp_stream.ptr
+
+    # gather necessary ingredients
+    ctx = cuda.devices.get_context()
+    handle = c_void_p(raw_str)
+    finalizer = None  # let CuPy handle its lifetime, not Numba
+
+    # create a Numba stream
+    nb_stream = cuda.cudadrv.driver.Stream(weakref.proxy(ctx), handle, finalizer)
+
+    return nb_stream
+
+
 MAX_X_BLOCKS = 65535
 #max is 65535
 
@@ -37,7 +63,9 @@ def p_place_particles_gpu(particles, grid_cumm, min_xy, grid_dim, step):
     blocks = ceil(particles.shape[0] / threads_per_block)
     blocks = min(blocks, MAX_X_BLOCKS)
     threads = threads_per_block
-    g_place_particles[blocks, threads](particles, min_xy, step, grid_dim, grid_cumm)
+
+    nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
+    g_place_particles[blocks, threads, nb_stream](particles, min_xy, step, grid_dim, grid_cumm)
 
 
 def previous_box(grid, gx, gy, grid_dim):
@@ -72,7 +100,8 @@ def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_di
     blocks = ceil(len(box_list) / threads_per_block)
     threads = min(threads_per_block, len(box_list))
     #print(f"blocks {blocks} threads {threads}  box_list: {box_list}")
-    g_summarize_w_ranges[blocks, threads](particle_slice, box_list, offset, grid_ranges, grid_dim, COMs)
+    nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
+    g_summarize_w_ranges[blocks, threads, nb_stream](particle_slice, box_list, offset, grid_ranges, grid_dim, COMs)
 
 # @specialized
 # def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
@@ -110,7 +139,7 @@ def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_di
 
 #@p_evaluate.variant(gpu)
 #def p_evaluate_gpu(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim):
-def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
+def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
     threads_per_block = int(Config.get("cuda", "threads_per_block"))
     cn = set()
     for box_xy in my_boxes:
@@ -163,14 +192,16 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slice
     gblocks = min(len(my_boxes), MAX_X_BLOCKS)
     blocks = (pblocks, gblocks)
     threads = threads_per_block
-    g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
+
+    nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
+    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
 
     cuda.synchronize()
     return my_particles
 
 
-def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
+def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slices, is_parray):
     threads_per_block = int(Config.get("cuda", "threads_per_block"))
     cn = set()
     for box_xy in my_boxes:
@@ -206,7 +237,8 @@ def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim,
     gblocks = min(len(my_boxes), MAX_X_BLOCKS)
     blocks = (pblocks, gblocks)
     threads = threads_per_block
-    g_evaluate_parla_multigpu[blocks, threads](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
+    nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
+    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
                 COMs, cn_ranges, cn_particles, G)
 
     cuda.synchronize()
