@@ -262,5 +262,6 @@ def p_timestep(particles, tick):
     blocks = ceil(particles.shape[0] / threads_per_block)
     blocks = min(blocks, MAX_X_BLOCKS)
     threads = threads_per_block
-    g_tick_particles[blocks, threads](particles, tick)
+    nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
+    g_tick_particles[blocks, threads, nb_stream](particles, tick)
     cuda.synchronize()
