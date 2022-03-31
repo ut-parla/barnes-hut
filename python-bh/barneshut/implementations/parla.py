@@ -94,7 +94,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         #Timer.print()
         self.cleanup()
 
-    async def create_tree(self):
+    async def create_tree_eager(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
         """
@@ -156,7 +156,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 acc += self.grid_cumm[i,j]
         print(f"post_placement_TS[1] finished.", flush=True)
 
-    async def summarize(self):
+    async def summarize_eager(self):
         cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "summarize_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
@@ -206,7 +206,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i in range(total_tasks):
             self.COMs += tasks_COMs[i]
 
-    async def evaluate(self):
+    async def evaluate_eager(self):
         #with Timer.get_handle("t0"):
         cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "evaluation_gpu_tasks"))
@@ -260,7 +260,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         await eval_TS
 
 
-    async def timestep(self):
+    async def timestep_eager(self):
         cpu_tasks = int(Config.get("parla", "timestep_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "timestep_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
@@ -302,7 +302,7 @@ class ParlaBarnesHut (BaseBarnesHut):
              return samples
 
 
-    async def create_tree_eager(self):
+    async def create_tree(self):
         """We're not creating an actual tree, just grouping particles 
         by the box in the grid they belong.
         """
@@ -366,7 +366,7 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         #await post_placement_TS
 
-    async def summarize_eager(self):
+    async def summarize(self):
         cpu_tasks = int(Config.get("parla", "summarize_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "summarize_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
@@ -416,7 +416,7 @@ class ParlaBarnesHut (BaseBarnesHut):
 
         #print(f"after coms {self.COMs}")
 
-    async def evaluate_eager(self):
+    async def evaluate(self):
         #with Timer.get_handle("t0"):
         cpu_tasks = int(Config.get("parla", "evaluation_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "evaluation_gpu_tasks"))
@@ -465,7 +465,7 @@ class ParlaBarnesHut (BaseBarnesHut):
                 #print(f"eval_TS[{i}] finished.", flush=True)
         await eval_TS
 
-    async def timestep_eager(self):
+    async def timestep(self):
         cpu_tasks = int(Config.get("parla", "timestep_cpu_tasks"))
         gpu_tasks = int(Config.get("parla", "timestep_gpu_tasks"))
         total_tasks = cpu_tasks + gpu_tasks        
