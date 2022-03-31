@@ -20,6 +20,8 @@ from parla.parray import asarray_batch, asarray
 
 from barneshut.kernels.grid_decomposition.parla import *
 
+tengigs = 10*(1024**3)
+
 def slice_indices(ar, n):
     k, m = divmod(len(ar), n)
     inds = [(i*k+min(i, m) , (i+1)*k+min(i+1, m)) for i in range(n)]
@@ -127,7 +129,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i, pslice in enumerate(slices):
             #parray input and output are equal, particle slice
             start, end = pslice
-            @spawn(placement_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]])
+            @spawn(placement_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]], memory=tengigs)
             def particle_placement_task():
                 #particles_here = clone_here(pslice)
                 particles_here = self.particles_parray[start:end].array
@@ -190,7 +192,7 @@ class ParlaBarnesHut (BaseBarnesHut):
             end = self.grid_ranges[lb_x, lb_y, 1]  
 
             #parray  inputs are many, output is tasks_COMs[i], do we need to specify read-only inputs?
-            @spawn(summarize_TS[i], placement=placements[i], input=[self.particles_parray[start:end]])
+            @spawn(summarize_TS[i], placement=placements[i], input=[self.particles_parray[start:end]], memory=tengigs)
             def summarize_task():
                 # fb_x, fb_y = box_range[0]
                 # lb_x, lb_y = box_range[-1]
@@ -250,10 +252,10 @@ class ParlaBarnesHut (BaseBarnesHut):
             start = self.grid_ranges[fb_x, fb_y, 0]
             end = self.grid_ranges[lb_x, lb_y, 1]
 
-            @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]])
+            @spawn(eval_TS[i], placement=placements[i], input=[*all_slices], output=[self.particles_parray[start:end]], memory=tengigs)
             def evaluate_task():
                 #print(f"boxes of task {i}: {len(box_range)}")
-                mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, not self.is_eager)
+                mod_particles = p_evaluate(self.particles_parray, box_range, grid, self.grid_ranges, self.COMs, G, self.grid_dim, slices, self.is_eager)
                 #if placements[i] is not cpu:
                 #    copy(self.particles[start:end], mod_particles)
                 #print(f"eval_TS[{i}] finished.", flush=True)
@@ -281,7 +283,7 @@ class ParlaBarnesHut (BaseBarnesHut):
         for i, pslice in enumerate(slices):
             #parray input = output == particle slice
             start, end = pslice
-            @spawn(timestep_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]])
+            @spawn(timestep_TS[i], placement=placements[i], inout=[self.particles_parray[start:end]], memory=tengigs)
             def timestep_task():
                 particles_here = self.particles_parray[start:end]
                 p_timestep(particles_here, tick)
