@@ -15,8 +15,8 @@ cfgs = {
     #"parla2_eager": "parla2_eager.ini",
     #"parla4_eager": "parla4_eager.ini",
 
-    #"parla1_eager_sched": "parla1_eager_sched.ini",
-    #"parla2_eager_sched": "parla2_eager_sched.ini",
+    "parla1_eager_sched": "parla1_eager_sched.ini",
+    "parla2_eager_sched": "parla2_eager_sched.ini",
     "parla4_eager_sched": "parla4_eager_sched.ini",
 }
 
