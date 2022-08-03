@@ -66,6 +66,7 @@ def p_place_particles_gpu(particles, grid_cumm, min_xy, grid_dim, step):
 
     nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
     g_place_particles[blocks, threads, nb_stream](particles, min_xy, step, grid_dim, grid_cumm)
+    nb_stream.synchronize()
 
 
 def previous_box(grid, gx, gy, grid_dim):
@@ -102,6 +103,7 @@ def p_summarize_boxes_gpu(particle_slice, box_list, offset, grid_ranges, grid_di
     #print(f"blocks {blocks} threads {threads}  box_list: {box_list}")
     nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
     g_summarize_w_ranges[blocks, threads, nb_stream](particle_slice, box_list, offset, grid_ranges, grid_dim, COMs)
+    nb_stream.synchronize()
 
 # @specialized
 # def p_evaluate(_particles, my_boxes, grid, _grid_ranges, COMs, G, grid_dim):
@@ -157,7 +159,7 @@ def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim,
         for x, y in cn:
             l = grid_ranges[x, y, 1] - grid_ranges[x, y, 0]
             cn_ranges[x, y] = total, total+l
-            total += l                 
+            total += l
         cn_particles = cp.empty((total, 3), dtype=np.float64)
         for x, y in cn:
             start, end = cn_ranges[x, y]
@@ -188,15 +190,15 @@ def p_evaluate_eager(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim,
     end = grid_ranges[lb_x, lb_y, 1]
     my_particles = particles[start:end].array
 
-    pblocks = ceil((end-start)/threads_per_block)    
+    pblocks = ceil((end-start)/threads_per_block)
     gblocks = min(len(my_boxes), MAX_X_BLOCKS)
     blocks = (pblocks, gblocks)
     threads = threads_per_block
 
     nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
-    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
+    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim,
                 COMs, cn_ranges, cn_particles, G)
-
+    nb_stream.synchronize()
     cuda.synchronize()
     return my_particles
 
@@ -219,7 +221,7 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slice
         for x, y in cn:
             l = grid_ranges[x, y, 1] - grid_ranges[x, y, 0]
             cn_ranges[x, y] = total, total+l
-            total += l                 
+            total += l
         cn_particles = np.empty((total, 3), dtype=np.float64)
         for x, y in cn:
             start, end = cn_ranges[x, y]
@@ -233,14 +235,14 @@ def p_evaluate(particles, my_boxes, _grid, grid_ranges, COMs, G, grid_dim, slice
     end = grid_ranges[lb_x, lb_y, 1]
     my_particles = particles[start:end]
 
-    pblocks = ceil((end-start)/threads_per_block)    
+    pblocks = ceil((end-start)/threads_per_block)
     gblocks = min(len(my_boxes), MAX_X_BLOCKS)
     blocks = (pblocks, gblocks)
     threads = threads_per_block
     nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
-    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim, 
+    g_evaluate_parla_multigpu[blocks, threads, nb_stream](my_particles, my_boxes, grid_ranges, offset, grid_dim,
                 COMs, cn_ranges, cn_particles, G)
-
+    nb_stream.synchronize()
     cuda.synchronize()
     return my_particles
 
@@ -264,4 +266,5 @@ def p_timestep(particles, tick):
     threads = threads_per_block
     nb_stream = stream_cupy_to_numba(cp.cuda.get_current_stream())
     g_tick_particles[blocks, threads, nb_stream](particles, tick)
+    nb_stream.synchronize()
     cuda.synchronize()
